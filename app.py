@@ -1,107 +1,130 @@
-# ---------------------------------------------------------
-# 🔍 PPT Keyword Search + Auto Excel Save (Full Enhanced Version)
-# ---------------------------------------------------------
+# app.py
+import streamlit as st
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
-import os
 import pandas as pd
-import ipywidgets as widgets
-from IPython.display import display
+import io
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
+import tempfile
+import os
+import traceback
+
+st.set_page_config(page_title="PPT Keyword Search", layout="wide")
+st.title("🔍 PPT Keyword Search Tool (Streamlit) — Option A (Multiple PPTX Uploads)")
+st.markdown("Upload one or more `.pptx` files, enter a keyword, and download an Excel with matching slides.")
 
 # --------------------------
-# Recursive Text Extraction (now includes charts)
+# Text extraction (robust)
 # --------------------------
 def extract_text_recursive(shape):
-    """Recursively extract text from all shape types, including charts and tables."""
     text = ""
-
     try:
-        # 1️⃣ Grouped shapes → recurse through sub-shapes
         if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
             for s in shape.shapes:
                 text += extract_text_recursive(s) + " "
 
-        # 2️⃣ Tables → extract text from all cells
         elif hasattr(shape, "has_table") and shape.has_table:
             for row in shape.table.rows:
                 for cell in row.cells:
-                    text += cell.text.strip() + " "
+                    if cell.text:
+                        text += cell.text.strip() + " "
 
-        # 3️⃣ Charts → extract title, axis labels, legend, and data labels
         elif hasattr(shape, "has_chart") and shape.has_chart:
             chart = shape.chart
-
-            # Chart title
-            if chart.has_title and chart.chart_title.has_text_frame:
-                text += chart.chart_title.text_frame.text.strip() + " "
-
-            # Axis titles
-            if chart.has_category_axis and chart.category_axis.has_title:
-                axis_title = chart.category_axis.axis_title
-                if axis_title.has_text_frame:
-                    text += axis_title.text_frame.text.strip() + " "
-
-            if chart.has_value_axis and chart.value_axis.has_title:
-                axis_title = chart.value_axis.axis_title
-                if axis_title.has_text_frame:
-                    text += axis_title.text_frame.text.strip() + " "
-
-            # Legend entries
-            if chart.has_legend:
-                for legend_entry in chart.legend.entries:
-                    if legend_entry.text.strip():
-                        text += legend_entry.text.strip() + " "
-
-            # Series data labels (if text available)
             try:
-                for series in chart.series:
-                    if series.has_data_labels:
-                        for point in series.points:
-                            if point.data_label and point.data_label.has_text_frame:
-                                text += point.data_label.text_frame.text.strip() + " "
+                if getattr(chart, "has_title", False):
+                    title_frame = getattr(chart, "chart_title", None)
+                    if title_frame and getattr(title_frame, "text_frame", None):
+                        text += title_frame.text_frame.text.strip() + " "
             except Exception:
                 pass
 
-        # 4️⃣ Regular text shapes
-        elif hasattr(shape, "text") and shape.text.strip():
-            text += shape.text.strip() + " "
+            try:
+                if getattr(chart, "has_category_axis", False):
+                    ax = chart.category_axis
+                    if getattr(ax, "has_title", False) and getattr(ax, "axis_title", None):
+                        t = ax.axis_title
+                        if getattr(t, "has_text_frame", False):
+                            text += t.text_frame.text.strip() + " "
+            except Exception:
+                pass
 
+            try:
+                if getattr(chart, "has_value_axis", False):
+                    ax = chart.value_axis
+                    if getattr(ax, "has_title", False) and getattr(ax, "axis_title", None):
+                        t = ax.axis_title
+                        if getattr(t, "has_text_frame", False):
+                            text += t.text_frame.text.strip() + " "
+            except Exception:
+                pass
+
+            try:
+                if getattr(chart, "has_legend", False) and chart.legend:
+                    for entry in chart.legend.entries:
+                        try:
+                            txt = entry.text
+                            if txt and txt.strip():
+                                text += txt.strip() + " "
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            try:
+                for series in chart.series:
+                    if getattr(series, "has_data_labels", False):
+                        for point in series.points:
+                            lbl = getattr(point, "data_label", None)
+                            if lbl and getattr(lbl, "has_text_frame", False):
+                                text += lbl.text_frame.text.strip() + " "
+            except Exception:
+                pass
+
+        elif hasattr(shape, "text") and shape.text and shape.text.strip():
+            text += shape.text.strip() + " "
     except Exception:
         pass
 
     return text.strip()
 
+def extract_text_from_presentation_bytes(filelike):
+    """
+    Accepts a file-like (BytesIO) or path string and returns list of slide dicts.
+    Each dict: {'slide_num': int, 'title': str, 'text': str}
+    """
+    try:
+        if isinstance(filelike, (str, os.PathLike)):
+            prs = Presentation(str(filelike))
+        else:
+            prs = Presentation(filelike)
+    except Exception:
+        return []
 
-# --------------------------
-# Extract Text + Visualization Title
-# --------------------------
-def extract_text_from_pptx(file_path):
-    """Extract all text and probable visualization title from each slide."""
-    prs = Presentation(file_path)
     slides_data = []
-
     for i, slide in enumerate(prs.slides):
         text = ""
         candidate_titles = []
-
         for shape in slide.shapes:
             shape_text = extract_text_recursive(shape)
             if shape_text:
                 text += shape_text + " "
                 y_position = getattr(shape, "top", 9999999)
                 font_size = 0
-
                 try:
-                    if hasattr(shape, "text_frame"):
+                    if hasattr(shape, "text_frame") and shape.text_frame is not None:
                         for paragraph in shape.text_frame.paragraphs:
                             for run in paragraph.runs:
-                                if run.font.size:
-                                    font_size = max(font_size, run.font.size.pt)
+                                try:
+                                    if run.font and run.font.size:
+                                        size = run.font.size.pt
+                                        if size:
+                                            font_size = max(font_size, size)
+                                except Exception:
+                                    pass
                 except Exception:
                     pass
-
                 candidate_titles.append((y_position, font_size, shape_text))
 
         title_text = ""
@@ -109,187 +132,91 @@ def extract_text_from_pptx(file_path):
             candidate_titles.sort(key=lambda x: (x[0], -x[1]))
             title_text = candidate_titles[0][2]
 
-        slides_data.append({
-            "slide_num": i + 1,
-            "title": title_text,
-            "text": text.strip()
-        })
-
+        slides_data.append({"slide_num": i + 1, "title": title_text, "text": text.strip()})
     return slides_data
 
-
 # --------------------------
-# Search Functions (case-insensitive)
+# UI: uploads + inputs
 # --------------------------
-def search_pptx(file_path, keyword):
-    """Return slide numbers and visualization titles containing the keyword (case-insensitive)."""
-    key_lower = keyword.lower()
-    slides_data = extract_text_from_pptx(file_path)
-    results = []
-
-    for slide in slides_data:
-        if key_lower in slide["text"].lower():
-            results.append({
-                "PPT Title": os.path.basename(file_path),
-                "PPT Slide No": slide["slide_num"],
-                "Visualization Title": slide["title"]
-            })
-    return results
-
-
-def search_folder(folder_path, keyword):
-    """Search all PPTX files recursively (excluding OUTPUT RESULT) and return results."""
-    results = {}
-    ppt_files = []
-
-    for root, dirs, files in os.walk(folder_path):
-        if "OUTPUT RESULT" in root:
-            continue
-        for f in files:
-            if f.lower().endswith(".pptx"):
-                ppt_files.append(os.path.join(root, f))
-
-    for file_path in ppt_files:
-        slides = search_pptx(file_path, keyword)
-        if slides:
-            results[os.path.basename(file_path)] = slides
-    return results
-
-
-# --------------------------
-# Widgets UI
-# --------------------------
-folder_box = widgets.Text(
-    placeholder="Enter folder path containing PPTX files",
-    description="PPT Folder:"
+uploaded_files = st.file_uploader(
+    "Upload one or more PPTX files",
+    type=["pptx"],
+    accept_multiple_files=True
 )
 
-keyword_box = widgets.Text(
-    placeholder="Enter word to search",
-    description="Keyword:"
-)
+col1, col2 = st.columns([3,1])
+with col1:
+    keyword = st.text_input("Keyword (case-insensitive)", "")
+with col2:
+    search_btn = st.button("Search 🔍")
 
-search_button = widgets.Button(description="Search 🔍")
-download_excel_button = widgets.Button(description="Download Excel ⬇️", disabled=True)
-output = widgets.Output()
-
-search_results = {}
-ppt_folder_global = ""
-output_folder_path = ""
-
+progress_placeholder = st.empty()
 
 # --------------------------
-# Helper: Clean Only Files Inside OUTPUT Folder
+# Search action
 # --------------------------
-def clean_output_folder():
-    global output_folder_path, ppt_folder_global
-    output_folder_path = os.path.join(ppt_folder_global, "OUTPUT RESULT")
-
-    if not os.path.exists(output_folder_path):
-        os.makedirs(output_folder_path)
-        with output:
-            print(f"📁 Created output folder: {output_folder_path}")
+if search_btn:
+    if not uploaded_files:
+        st.warning("Please upload at least one .pptx file.")
+    elif not keyword or keyword.strip() == "":
+        st.warning("Please enter a keyword to search.")
     else:
-        for file in os.listdir(output_folder_path):
-            file_path = os.path.join(output_folder_path, file)
+        kw = keyword.strip().lower()
+        results = []
+        total = len(uploaded_files)
+        with st.spinner("Processing files..."):
+            for idx, uploaded in enumerate(uploaded_files, start=1):
+                try:
+                    fname = uploaded.name
+                    b = uploaded.read()
+                    bio = io.BytesIO(b)
+                    slides = extract_text_from_presentation_bytes(bio)
+                    for s in slides:
+                        if kw in s["text"].lower():
+                            results.append({
+                                "PPT Title": fname,
+                                "PPT Slide No": s["slide_num"],
+                                "Visualization Title": s["title"]
+                            })
+                except Exception as e:
+                    st.error(f"Error processing {uploaded.name}: {e}")
+                    st.text(traceback.format_exc())
+                progress = int((idx/total) * 100)
+                progress_placeholder.progress(progress)
+
+        progress_placeholder.empty()
+
+        if results:
+            df = pd.DataFrame(results, columns=["PPT Title", "PPT Slide No", "Visualization Title"])
+            st.success(f"Found {len(df)} matching slide(s).")
+            st.dataframe(df)
+
+            # prepare Excel in-memory
+            towrite = io.BytesIO()
+            with pd.ExcelWriter(towrite, engine="openpyxl") as writer:
+                df.to_excel(writer, index=False, sheet_name="Results")
+                writer.save()
+            towrite.seek(0)
+
+            # attempt left-align using openpyxl
             try:
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-            except Exception as e:
-                print(f"Error deleting file {file_path}: {e}")
-        with output:
-            print(f"🧹 Cleaned existing files in: {output_folder_path}")
+                wb = load_workbook(towrite)
+                ws = wb.active
+                for row in ws.iter_rows():
+                    for cell in row:
+                        cell.alignment = Alignment(horizontal="left")
+                out_stream = io.BytesIO()
+                wb.save(out_stream)
+                out_stream.seek(0)
+            except Exception:
+                towrite.seek(0)
+                out_stream = towrite
 
-
-# --------------------------
-# Save to Excel (Auto)
-# --------------------------
-def save_results_to_dataframe():
-    data = []
-    for ppt, slides in search_results.items():
-        for slide in slides:
-            data.append(slide)
-    df = pd.DataFrame(data, columns=["PPT Title", "PPT Slide No", "Visualization Title"])
-    return df
-
-
-def save_results_to_excel():
-    df = save_results_to_dataframe()
-    excel_path = os.path.join(output_folder_path, "ppt_search_results.xlsx")
-    df.to_excel(excel_path, index=False)
-
-    # Left-align Excel text
-    wb = load_workbook(excel_path)
-    ws = wb.active
-    for row in ws.iter_rows():
-        for cell in row:
-            cell.alignment = Alignment(horizontal="left")
-    wb.save(excel_path)
-    return excel_path
-
-
-# --------------------------
-# Button Actions
-# --------------------------
-def on_search_click(b):
-    global search_results, ppt_folder_global
-    output.clear_output()
-    download_excel_button.disabled = True
-
-    folder_path = folder_box.value.strip()
-    keyword = keyword_box.value.strip()
-    ppt_folder_global = folder_path
-
-    if not folder_path:
-        with output:
-            print("⚠️ Please enter the folder path.")
-        return
-    if not keyword:
-        with output:
-            print("⚠️ Please enter a keyword.")
-        return
-    if not os.path.exists(folder_path):
-        with output:
-            print("❌ Folder path does not exist.")
-        return
-
-    clean_output_folder()
-    search_results = search_folder(folder_path, keyword)
-
-    with output:
-        if search_results:
-            print(f'🔍 Found matches for "{keyword}" (case-insensitive):')
-            for ppt, slides in search_results.items():
-                print(f"\n📄 {ppt}:")
-                for item in slides:
-                    print(f"   • Slide {item['PPT Slide No']}: {item['Visualization Title']}")
-
-            excel_path = save_results_to_excel()
-            print(f"\n✅ Excel automatically saved at: {excel_path}")
-
-            download_excel_button.disabled = False
+            st.download_button(
+                label="⬇️ Download results as Excel",
+                data=out_stream,
+                file_name="ppt_search_results.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
         else:
-            print(f'❌ No results found for "{keyword}".')
-
-
-def on_download_excel_click(b):
-    if search_results:
-        excel_path = os.path.join(output_folder_path, "ppt_search_results.xlsx")
-        with output:
-            print(f"📥 Excel file ready at: {excel_path}")
-
-
-# --------------------------
-# Link Buttons & Display UI
-# --------------------------
-search_button.on_click(on_search_click)
-download_excel_button.on_click(on_download_excel_click)
-
-display(widgets.VBox([
-    widgets.HTML("<h3>🔍 PPT Keyword Search Tool (Excel Auto Save + Chart Support)</h3>"),
-    folder_box,
-    keyword_box,
-    search_button,
-    download_excel_button,
-    output
-]))
+            st.info("No matches found for the keyword in uploaded PPTX files.")
