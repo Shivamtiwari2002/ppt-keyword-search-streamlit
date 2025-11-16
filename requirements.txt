@@ -1,4 +1,7 @@
 streamlit
-python-pptx
+st-aggrid
 pandas
+python-pptx
+Pillow
 openpyxl
+
