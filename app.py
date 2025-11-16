@@ -198,16 +198,25 @@ if search_btn:
         st.subheader("Search Results")
 
         # -----------------------
+        # Live search/filter box for table
+        # -----------------------
+        filter_text = st.text_input("🔎 Filter table results (type any text):")
+        if filter_text:
+            df_filtered = df[df.apply(lambda row: row.astype(str).str.contains(filter_text, case=False).any(), axis=1)]
+        else:
+            df_filtered = df
+
+        # -----------------------
         # AgGrid interactive table
         # -----------------------
-        gb = GridOptionsBuilder.from_dataframe(df)
-        gb.configure_default_column(editable=False, filter=True, sortable=True)
+        gb = GridOptionsBuilder.from_dataframe(df_filtered)
+        gb.configure_default_column(editable=False, filter=True, sortable=True, resizable=True)
         gb.configure_selection('single')
         gb.configure_grid_options(domLayout='normal')
         grid_options = gb.build()
 
         AgGrid(
-            df,
+            df_filtered,
             gridOptions=grid_options,
             height=400,
             width='100%',
@@ -221,7 +230,7 @@ if search_btn:
         # Export Excel
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df.to_excel(writer, index=False, sheet_name="Results")
+            df_filtered.to_excel(writer, index=False, sheet_name="Results")
         excel_data = output.getvalue()
 
         st.download_button(
