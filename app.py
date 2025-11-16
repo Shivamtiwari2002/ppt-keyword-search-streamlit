@@ -6,7 +6,6 @@ import tempfile
 import os
 import re
 from io import BytesIO
-from PIL import Image, ImageDraw
 
 # ------------------- PAGE CONFIG -------------------
 st.set_page_config(page_title="PPT Keyword Search Tool", layout="wide")
@@ -67,6 +66,24 @@ st.markdown("""
     margin-right: 8px !important;
 }
 
+.table-container {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+.table-container th {
+    background-color: #0000FF;
+    color: white;
+    font-weight: 700;
+    padding: 10px;
+    text-align: left;
+}
+
+.table-container td {
+    padding: 8px;
+    border-bottom: 1px solid #ddd;
+}
+
 .footer {
     text-align:center;
     margin-top: 40px;
@@ -115,8 +132,7 @@ def extract_text_from_pptx(file_path):
             matches.append({
                 "File": os.path.basename(file_path),
                 "Slide Number": slide_num,
-                "Matched Text": slide_text.strip(),
-                "File Path": file_path
+                "Matched Text": slide_text.strip()
             })
     return matches
 
@@ -130,18 +146,6 @@ def process_zip(file):
             if f.endswith(".pptx"):
                 pptx_files.append(os.path.join(root, f))
     return pptx_files
-
-def render_slide(slide):
-    width = int(slide.slide_width * 0.8 / 914400 * 1000)
-    height = int(slide.slide_height * 0.8 / 914400 * 1000)
-    img = Image.new("RGB", (width, height), color="white")
-    draw = ImageDraw.Draw(img)
-    y = 10
-    for shape in slide.shapes:
-        if hasattr(shape, "text"):
-            draw.text((10, y), shape.text, fill="black")
-            y += 20 + len(shape.text.split("\n"))*2
-    return img
 
 # ------------------- SEARCH LOGIC -------------------
 if search_btn:
@@ -181,25 +185,29 @@ if search_btn:
         else:
             df_filtered = df
 
-        # ------------------- DISPLAY TABLE -------------------
-        st.dataframe(df_filtered.drop(columns=["File Path"], errors='ignore'))
+        # ------------------- DISPLAY STYLED TABLE -------------------
+        def render_styled_table(df):
+            html = "<table class='table-container'>"
+            # Headers
+            html += "<tr>"
+            for col in df.columns:
+                html += f"<th>{col}</th>"
+            html += "</tr>"
+            # Rows
+            for _, row in df.iterrows():
+                html += "<tr>"
+                for item in row:
+                    html += f"<td>{item}</td>"
+                html += "</tr>"
+            html += "</table>"
+            return html
 
-        # ------------------- SELECT SLIDE -------------------
-        slide_options = df_filtered.apply(lambda r: f"{r['File']} - Slide {r['Slide Number']}", axis=1).tolist()
-        selected_slide = st.selectbox("Select a slide to preview:", [""] + slide_options)
-
-        if selected_slide:
-            index = slide_options.index(selected_slide)
-            row = df_filtered.iloc[index]
-            prs = Presentation(row["File Path"])
-            slide = prs.slides[row["Slide Number"] - 1]
-            img = render_slide(slide)
-            st.image(img, caption=selected_slide, use_column_width=True)
+        st.markdown(render_styled_table(df_filtered), unsafe_allow_html=True)
 
         # ------------------- DOWNLOAD EXCEL -------------------
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df_filtered.drop(columns=["File Path"], errors='ignore').to_excel(writer, index=False, sheet_name="Results")
+            df_filtered.to_excel(writer, index=False, sheet_name="Results")
         st.download_button(
             label="⬇ Download Results (Excel)",
             data=output.getvalue(),
