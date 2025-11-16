@@ -1,222 +1,185 @@
-# app.py
 import streamlit as st
-from pptx import Presentation
-from pptx.enum.shapes import MSO_SHAPE_TYPE
 import pandas as pd
-import io
-from openpyxl import load_workbook
-from openpyxl.styles import Alignment
+from pptx import Presentation
 import tempfile
 import os
-import traceback
+import re
+from io import BytesIO
 
-st.set_page_config(page_title="PPT Keyword Search", layout="wide")
-st.title("🔍 PPT Keyword Search Tool (Streamlit) — Option A (Multiple PPTX Uploads)")
-st.markdown("Upload one or more `.pptx` files, enter a keyword, and download an Excel with matching slides.")
+# -----------------------------
+# PAGE CONFIG
+# -----------------------------
+st.set_page_config(page_title="PPT Keyword Search Tool", layout="wide")
 
-# --------------------------
-# Text extraction (robust)
-# --------------------------
-def extract_text_recursive(shape):
-    text = ""
-    try:
-        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-            for s in shape.shapes:
-                text += extract_text_recursive(s) + " "
+# -----------------------------
+# CUSTOM CSS (A1 THEME)
+# -----------------------------
+st.markdown("""
+<style>
 
-        elif hasattr(shape, "has_table") and shape.has_table:
-            for row in shape.table.rows:
-                for cell in row.cells:
-                    if cell.text:
-                        text += cell.text.strip() + " "
+    /* Blue Header */
+    .main-header {
+        background-color: #0000FF;
+        padding: 20px 40px;
+        color: white;
+        font-size: 32px;
+        font-weight: 800;
+        border-radius: 0px;
+        text-align: left;
+        margin-bottom: 25px;
+    }
 
-        elif hasattr(shape, "has_chart") and shape.has_chart:
-            chart = shape.chart
-            try:
-                if getattr(chart, "has_title", False):
-                    title_frame = getattr(chart, "chart_title", None)
-                    if title_frame and getattr(title_frame, "text_frame", None):
-                        text += title_frame.text_frame.text.strip() + " "
-            except Exception:
-                pass
+    /* White Card */
+    .white-card {
+        background-color: white;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        margin-bottom: 20px;
+    }
 
-            try:
-                if getattr(chart, "has_category_axis", False):
-                    ax = chart.category_axis
-                    if getattr(ax, "has_title", False) and getattr(ax, "axis_title", None):
-                        t = ax.axis_title
-                        if getattr(t, "has_text_frame", False):
-                            text += t.text_frame.text.strip() + " "
-            except Exception:
-                pass
+    /* Buttons */
+    .stButton>button {
+        background-color: #0000FF !important;
+        color: white !important;
+        border-radius: 10px !important;
+        padding: 10px 20px;
+        font-size: 16px;
+        border: none;
+    }
 
-            try:
-                if getattr(chart, "has_value_axis", False):
-                    ax = chart.value_axis
-                    if getattr(ax, "has_title", False) and getattr(ax, "axis_title", None):
-                        t = ax.axis_title
-                        if getattr(t, "has_text_frame", False):
-                            text += t.text_frame.text.strip() + " "
-            except Exception:
-                pass
+    .stButton>button:hover {
+        background-color: #0022BB !important;
+        color: white !important;
+        border: none;
+    }
 
-            try:
-                if getattr(chart, "has_legend", False) and chart.legend:
-                    for entry in chart.legend.entries:
-                        try:
-                            txt = entry.text
-                            if txt and txt.strip():
-                                text += txt.strip() + " "
-                        except Exception:
-                            pass
-            except Exception:
-                pass
+</style>
+""", unsafe_allow_html=True)
 
-            try:
-                for series in chart.series:
-                    if getattr(series, "has_data_labels", False):
-                        for point in series.points:
-                            lbl = getattr(point, "data_label", None)
-                            if lbl and getattr(lbl, "has_text_frame", False):
-                                text += lbl.text_frame.text.strip() + " "
-            except Exception:
-                pass
+# -----------------------------
+# HEADER BAR
+# -----------------------------
+st.markdown('<div class="main-header">PPT Keyword Search Tool</div>', unsafe_allow_html=True)
 
-        elif hasattr(shape, "text") and shape.text and shape.text.strip():
-            text += shape.text.strip() + " "
-    except Exception:
-        pass
+# -----------------------------
+# FUNCTIONS
+# -----------------------------
+def clean_text(text):
+    """Remove illegal Excel characters."""
+    if not isinstance(text, str):
+        return text
+    return re.sub(r'[\x00-\x1F\x7F-\x9F]', '', text)
 
-    return text.strip()
+def extract_text_from_ppt(ppt_file):
+    prs = Presentation(ppt_file)
+    all_text = []
 
-def extract_text_from_presentation_bytes(filelike):
-    """
-    Accepts a file-like (BytesIO) or path string and returns list of slide dicts.
-    Each dict: {'slide_num': int, 'title': str, 'text': str}
-    """
-    try:
-        if isinstance(filelike, (str, os.PathLike)):
-            prs = Presentation(str(filelike))
-        else:
-            prs = Presentation(filelike)
-    except Exception:
-        return []
-
-    slides_data = []
-    for i, slide in enumerate(prs.slides):
-        text = ""
-        candidate_titles = []
+    for slide_num, slide in enumerate(prs.slides, start=1):
         for shape in slide.shapes:
-            shape_text = extract_text_recursive(shape)
-            if shape_text:
-                text += shape_text + " "
-                y_position = getattr(shape, "top", 9999999)
-                font_size = 0
-                try:
-                    if hasattr(shape, "text_frame") and shape.text_frame is not None:
-                        for paragraph in shape.text_frame.paragraphs:
-                            for run in paragraph.runs:
-                                try:
-                                    if run.font and run.font.size:
-                                        size = run.font.size.pt
-                                        if size:
-                                            font_size = max(font_size, size)
-                                except Exception:
-                                    pass
-                except Exception:
-                    pass
-                candidate_titles.append((y_position, font_size, shape_text))
+            if hasattr(shape, "text"):
+                cleaned = clean_text(shape.text)
+                all_text.append((slide_num, cleaned))
+    return all_text
 
-        title_text = ""
-        if candidate_titles:
-            candidate_titles.sort(key=lambda x: (x[0], -x[1]))
-            title_text = candidate_titles[0][2]
+def create_excel(df):
+    """Creates downloadable Excel file with clean text."""
+    output = BytesIO()
 
-        slides_data.append({"slide_num": i + 1, "title": title_text, "text": text.strip()})
-    return slides_data
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Results")
 
-# --------------------------
-# UI: uploads + inputs
-# --------------------------
-uploaded_files = st.file_uploader(
-    "Upload one or more PPTX files",
-    type=["pptx"],
-    accept_multiple_files=True
-)
+    return output.getvalue()
 
-col1, col2 = st.columns([3,1])
-with col1:
-    keyword = st.text_input("Keyword (case-insensitive)", "")
-with col2:
-    search_btn = st.button("Search 🔍")
+# -----------------------------
+# WHITE CARD CONTAINER
+# -----------------------------
+with st.container():
+    st.markdown('<div class="white-card">', unsafe_allow_html=True)
 
-progress_placeholder = st.empty()
+    uploaded_files = st.file_uploader(
+        "Upload one or more PPTX files:",
+        type=["pptx"],
+        accept_multiple_files=True
+    )
 
-# --------------------------
-# Search action
-# --------------------------
-if search_btn:
+    keywords_input = st.text_input(
+        "Enter keywords (comma separated):",
+        placeholder="e.g., digital, process, automation"
+    )
+
+    search_button = st.button("🔍 Search Keywords")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# -----------------------------
+# SEARCH PROCESS
+# -----------------------------
+if search_button:
     if not uploaded_files:
-        st.warning("Please upload at least one .pptx file.")
-    elif not keyword or keyword.strip() == "":
-        st.warning("Please enter a keyword to search.")
+        st.error("Please upload at least one PPTX file.")
+    elif not keywords_input.strip():
+        st.error("Please enter at least one keyword.")
     else:
-        kw = keyword.strip().lower()
+        keywords = [k.strip().lower() for k in keywords_input.split(",")]
         results = []
-        total = len(uploaded_files)
-        with st.spinner("Processing files..."):
-            for idx, uploaded in enumerate(uploaded_files, start=1):
-                try:
-                    fname = uploaded.name
-                    b = uploaded.read()
-                    bio = io.BytesIO(b)
-                    slides = extract_text_from_presentation_bytes(bio)
-                    for s in slides:
-                        if kw in s["text"].lower():
-                            results.append({
-                                "PPT Title": fname,
-                                "PPT Slide No": s["slide_num"],
-                                "Visualization Title": s["title"]
-                            })
-                except Exception as e:
-                    st.error(f"Error processing {uploaded.name}: {e}")
-                    st.text(traceback.format_exc())
-                progress = int((idx/total) * 100)
-                progress_placeholder.progress(progress)
 
-        progress_placeholder.empty()
+        for file in uploaded_files:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as tmp:
+                tmp.write(file.read())
+                ppt_path = tmp.name
 
+            extracted_data = extract_text_from_ppt(ppt_path)
+
+            for slide_num, text in extracted_data:
+                text_lower = text.lower()
+                for kw in keywords:
+                    if kw in text_lower:
+                        highlighted = re.sub(
+                            kw, 
+                            f"[**{kw.upper()}**]",
+                            text, 
+                            flags=re.IGNORECASE
+                        )
+                        results.append([file.name, slide_num, kw, clean_text(highlighted)])
+
+            os.remove(ppt_path)
+
+        # Convert results to DataFrame
         if results:
-            df = pd.DataFrame(results, columns=["PPT Title", "PPT Slide No", "Visualization Title"])
-            st.success(f"Found {len(df)} matching slide(s).")
-            st.dataframe(df)
+            df = pd.DataFrame(results, columns=["File Name", "Slide Number", "Keyword", "Text Extract"])
 
-            # prepare Excel in-memory
-            towrite = io.BytesIO()
-            with pd.ExcelWriter(towrite, engine="openpyxl") as writer:
-                df.to_excel(writer, index=False, sheet_name="Results")
-                writer.save()
-            towrite.seek(0)
+            st.write("### 🔎 Search Results")
+            st.dataframe(df, use_container_width=True)
 
-            # attempt left-align using openpyxl
-            try:
-                wb = load_workbook(towrite)
-                ws = wb.active
-                for row in ws.iter_rows():
-                    for cell in row:
-                        cell.alignment = Alignment(horizontal="left")
-                out_stream = io.BytesIO()
-                wb.save(out_stream)
-                out_stream.seek(0)
-            except Exception:
-                towrite.seek(0)
-                out_stream = towrite
-
+            # -----------------------------
+            # EXCEL DOWNLOAD BUTTON
+            # -----------------------------
+            excel_data = create_excel(df)
             st.download_button(
-                label="⬇️ Download results as Excel",
-                data=out_stream,
-                file_name="ppt_search_results.xlsx",
+                label="⬇ Download Results (Excel)",
+                data=excel_data,
+                file_name="ppt_keyword_results.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+
+            # -----------------------------
+            # NEW SEARCH BUTTON (NS2)
+            # -----------------------------
+            st.markdown("###")
+            if st.button("🔄 New Search"):
+                st.session_state.clear()
+                st.experimental_rerun()
+
         else:
-            st.info("No matches found for the keyword in uploaded PPTX files.")
+            st.warning("No matches found for the given keywords.")
+
+# -----------------------------
+# FOOTER
+# -----------------------------
+st.markdown("""
+<hr>
+<div style="text-align:center; color: gray; padding-top:10px;">
+    © 2025 — SKT
+</div>
+""", unsafe_allow_html=True)
