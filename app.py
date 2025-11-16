@@ -1,268 +1,180 @@
 import streamlit as st
 from pptx import Presentation
-from pptx.enum.shapes import MSO_SHAPE_TYPE
-import pandas as pd
+import zipfile
 import io
-import re
-from datetime import datetime
+import os
 
-# =========================================================
-#                   🔹 GLOBAL UI STYLING 🔹
-# =========================================================
-
-BLUE = "#0000FF"
-WHITE = "#FFFFFF"
-
-st.set_page_config(
-    page_title="PPT Keyword Search Tool",
-    layout="wide",
-)
-
-st.markdown(
-    f"""
+# -------------------------------------------------------------
+# 🔵 CUSTOM CSS STYLING (Blue-White Premium UI)
+# -------------------------------------------------------------
+st.markdown("""
     <style>
 
-    /* Center the main container */
-    .main-container {{
-        background-color: {WHITE};
-        padding: 20px;
-        border-radius: 15px;
-        border: 2px solid {BLUE};
-        box-shadow: 0 0 10px rgba(0,0,0,0.15);
-    }}
+    /* Page background */
+    .stApp {
+        background: #EEF3FF;
+    }
 
-    /* Headings */
-    .main-title {{
-        color: {BLUE};
+    /* Top header bar */
+    .top-header {
+        width: 100%;
+        padding: 18px 0;
+        background-color: #0000FF;
         text-align: center;
-        font-size: 32px;
+        color: white;
+        font-size: 28px;
         font-weight: 700;
-        margin-bottom: 10px;
-    }}
+        border-radius: 0 0 10px 10px;
+        margin-bottom: 25px;
+    }
 
-    .section-title {{
-        color: {BLUE};
-        font-size: 20px;
-        font-weight: bold;
-        margin-top: 15px;
-        margin-bottom: 5px;
-    }}
-
-    /* Button Styling */
-    .stButton>button {{
-        background-color: {BLUE} !important;
-        color: {WHITE} !important;
-        border-radius: 8px !important;
-        padding: 8px 18px !important;
-        font-size: 16px !important;
-        border: none;
-    }}
-
-    .stButton>button:hover {{
-        opacity: 0.9;
-    }}
-
-    /* Output box styling */
-    .output-box {{
-        background-color: {WHITE};
-        border: 2px solid {BLUE};
+    /* White card container */
+    .card {
+        background-color: white;
         padding: 20px;
         border-radius: 12px;
-        margin-top: 20px;
-        box-shadow: 0 0 8px rgba(0,0,0,0.1);
-    }}
+        box-shadow: 0px 2px 12px rgba(0,0,0,0.10);
+        border: 2px solid #0000FF10;
+        margin-bottom: 25px;
+    }
+
+    /* Buttons styling */
+    .stButton>button {
+        background-color: #0000FF;
+        color: white;
+        border-radius: 8px;
+        font-size: 16px;
+        padding: 8px 20px;
+        border: none;
+    }
+
+    .stButton>button:hover {
+        background-color: #0000CC;
+        color: white;
+    }
+
+    /* Search result box */
+    .result-box {
+        border: 2px solid #0000FF;
+        padding: 12px;
+        border-radius: 8px;
+        background: white;
+        font-size: 15px;
+        margin-bottom: 10px;
+    }
+
+    /* Footer */
+    .footer {
+        text-align: center;
+        margin-top: 40px;
+        color: #0000FF;
+        padding: 15px 0;
+        font-weight: 600;
+    }
 
     </style>
-    """, unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
 
+# -------------------------------------------------------------
+# 🔵 TOP HEADER BAR
+# -------------------------------------------------------------
+st.markdown("<div class='top-header'>PPT Keyword Search Tool</div>", unsafe_allow_html=True)
 
-# =========================================================
-#            🔹 CLEAN TEXT (Fix Excel Illegal Characters)
-# =========================================================
-
-def clean_text(value):
-    if pd.isna(value):
-        return ""
-    value = str(value)
-    value = re.sub(r"[\x00-\x1F\x7F]", "", value)
-    return value
-
-
-# =========================================================
-#        🔹 RECURSIVE PPT TEXT EXTRACTION (CHARTS + TABLES)
-# =========================================================
-
-def extract_text_recursive(shape):
-    text = ""
-
-    try:
-        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-            for s in shape.shapes:
-                text += extract_text_recursive(s) + " "
-
-        elif hasattr(shape, "has_table") and shape.has_table:
-            for row in shape.table.rows:
-                for cell in row.cells:
-                    text += cell.text.strip() + " "
-
-        elif hasattr(shape, "has_chart") and shape.has_chart:
-            chart = shape.chart
-
-            if chart.has_title and chart.chart_title.has_text_frame:
-                text += chart.chart_title.text_frame.text.strip() + " "
-
-            try:
-                for series in chart.series:
-                    if series.has_data_labels:
-                        for point in series.points:
-                            if point.data_label and point.data_label.has_text_frame:
-                                text += point.data_label.text_frame.text.strip() + " "
-            except:
-                pass
-
-        elif hasattr(shape, "text") and shape.text.strip():
-            text += shape.text.strip() + " "
-
-    except:
-        pass
-
-    return text.strip()
-
-
-def extract_text_from_pptx(file):
-    prs = Presentation(file)
-    slides_data = []
-
-    for i, slide in enumerate(prs.slides):
-        text = ""
-        candidate_titles = []
-
-        for shape in slide.shapes:
-            shape_text = extract_text_recursive(shape)
-            if shape_text:
-                text += shape_text + " "
-                candidate_titles.append((getattr(shape, "top", 999999), shape_text))
-
-        title_text = ""
-        if candidate_titles:
-            candidate_titles.sort(key=lambda x: x[0])
-            title_text = candidate_titles[0][1]
-
-        slides_data.append({
-            "slide_num": i + 1,
-            "title": title_text,
-            "text": text.strip()
-        })
-
-    return slides_data
-
-
-# =========================================================
-#                     🔹 SEARCH FUNCTION
-# =========================================================
-
-def search_ppt(file, keyword):
-    keyword = keyword.lower()
-    slides_data = extract_text_from_pptx(file)
+# -------------------------------------------------------------
+# Functions
+# -------------------------------------------------------------
+def search_keyword_in_pptx(pptx_file, keyword):
+    prs = Presentation(pptx_file)
     results = []
-
-    for slide in slides_data:
-        if keyword in slide["text"].lower():
-            results.append({
-                "PPT Name": file.name,
-                "Slide No": slide["slide_num"],
-                "Visualization Title": slide["title"]
-            })
-
+    
+    for slide_number, slide in enumerate(prs.slides, start=1):
+        for shape in slide.shapes:
+            if hasattr(shape, "text"):
+                if keyword.lower() in shape.text.lower():
+                    results.append(f"Slide {slide_number}: {shape.text.strip()}")
     return results
 
 
-# =========================================================
-#                    🔹 UI MAIN CONTAINER
-# =========================================================
+def search_keyword_in_zip(zip_file, keyword):
+    results = []
+    zip_bytes = io.BytesIO(zip_file.read())
 
-st.markdown('<div class="main-container">', unsafe_allow_html=True)
-st.markdown('<div class="main-title">🔍 PPT Keyword Search Tool</div>', unsafe_allow_html=True)
+    with zipfile.ZipFile(zip_bytes, 'r') as z:
+        for filename in z.namelist():
+            if filename.endswith(".pptx"):
+                pptx_bytes = z.read(filename)
+                pptx_stream = io.BytesIO(pptx_bytes)
 
-
-# =========================================================
-#                     🔹 INPUT SECTION
-# =========================================================
-
-uploaded_files = st.file_uploader(
-    "Upload multiple PPTX files",
-    type=["pptx"],
-    accept_multiple_files=True
-)
-
-keyword = st.text_input("Enter keyword to search")
-
-search_clicked = st.button("🔎 Search")
+                slide_results = search_keyword_in_pptx(pptx_stream, keyword)
+                if slide_results:
+                    results.append((filename, slide_results))
+    return results
 
 
-# =========================================================
-#                     🔹 SEARCH ACTION
-# =========================================================
+# -------------------------------------------------------------
+# 🔵 Main UI Card
+# -------------------------------------------------------------
+with st.container():
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
 
-if search_clicked:
-    if not uploaded_files:
-        st.warning("Please upload at least one PPTX file.")
-        st.stop()
+    st.subheader("Upload PPT or ZIP Files")
 
-    if not keyword.strip():
-        st.warning("Please enter a keyword.")
-        st.stop()
+    uploaded_files = st.file_uploader(
+        "Choose PPTX or ZIP files:",
+        type=["pptx", "zip"],
+        accept_multiple_files=True
+    )
 
-    all_results = []
+    keyword = st.text_input("Enter keyword to search:")
 
-    for file in uploaded_files:
-        slides = search_ppt(file, keyword)
-        all_results.extend(slides)
+    # Buttons
+    search_btn = st.button("🔍 Search")
+    new_search_btn = st.button("🔄 New Search")
+    clear_btn = st.button("🗑 Clear All")
 
-    if not all_results:
-        st.error("No results found.")
-    else:
-        df = pd.DataFrame(all_results)
-        df = df.applymap(clean_text)
+    if new_search_btn:
+        st.experimental_rerun()
 
-        st.markdown('<div class="output-box">', unsafe_allow_html=True)
-        st.markdown('<div class="section-title">Search Results</div>', unsafe_allow_html=True)
+    if clear_btn:
+        st.experimental_rerun()
 
-        st.dataframe(df, use_container_width=True)
+    if search_btn:
+        if not uploaded_files:
+            st.warning("Please upload at least one PPTX or ZIP file.")
+        elif not keyword.strip():
+            st.warning("Please enter a keyword.")
+        else:
+            st.markdown("---")
+            st.subheader("Search Results")
 
-        excel_buffer = io.BytesIO()
-        df.to_excel(excel_buffer, index=False, engine="openpyxl")
-        excel_buffer.seek(0)
+            found_any = False
 
-        st.download_button(
-            label="⬇ Download Excel",
-            data=excel_buffer,
-            file_name=f"ppt_search_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+            for file in uploaded_files:
+                filename = file.name
 
-        st.write("")
+                if filename.endswith(".pptx"):
+                    results = search_keyword_in_pptx(file, keyword)
+                    if results:
+                        found_any = True
+                        st.markdown(f"<div class='result-box'><b>{filename}</b></div>", unsafe_allow_html=True)
+                        for r in results:
+                            st.markdown(f"<div class='result-box'>{r}</div>", unsafe_allow_html=True)
 
-        st.button("⬆ Upload More PPTX Files", on_click=lambda: st.experimental_rerun())
-        st.button("🧹 Clear Results", on_click=lambda: st.experimental_rerun())
-        st.button("🔄 New Search", on_click=lambda: st.session_state.clear() or st.experimental_rerun())
+                elif filename.endswith(".zip"):
+                    zip_results = search_keyword_in_zip(file, keyword)
+                    if zip_results:
+                        found_any = True
+                        for ppt_name, slides in zip_results:
+                            st.markdown(f"<div class='result-box'><b>{ppt_name}</b></div>", unsafe_allow_html=True)
+                            for item in slides:
+                                st.markdown(f"<div class='result-box'>{item}</div>", unsafe_allow_html=True)
 
-        st.markdown("</div>", unsafe_allow_html=True)
+            if not found_any:
+                st.info("No results found for the keyword.")
 
+    st.markdown("</div>", unsafe_allow_html=True)
 
-# =========================================================
-#                           FOOTER
-# =========================================================
-
-st.markdown(
-    f"""
-    <br>
-    <center style="color:{BLUE}; font-size:14px;">
-        Built by <b>SKT</b> • Designed in Blue & White Theme
-    </center>
-    """,
-    unsafe_allow_html=True
-)
-
-st.markdown("</div>", unsafe_allow_html=True)
+# -------------------------------------------------------------
+# 🔵 FOOTER
+# -------------------------------------------------------------
+st.markdown("<div class='footer'>Made by SKT</div>", unsafe_allow_html=True)
