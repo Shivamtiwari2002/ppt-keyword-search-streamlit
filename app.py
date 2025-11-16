@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # -----------------------------------------------------------
-# CUSTOM CSS (Blue/White Premium Theme) — updated uploader overlay
+# CUSTOM CSS (Blue/White Premium Theme)
 # -----------------------------------------------------------
 st.markdown("""
 <style>
@@ -25,12 +25,13 @@ st.markdown("""
     .blue-header {
         background-color: #0000FF;
         padding: 22px;
+        border-radius: 0px;
         text-align: center;
         color: white;
         font-size: 32px;
         font-weight: 700;
         letter-spacing: 1px;
-        margin-bottom: 20px;
+        margin-bottom: 24px;
     }
 
     /* App background */
@@ -38,48 +39,43 @@ st.markdown("""
         background-color: #F4F6FF !important;
     }
 
-    /* Container for uploader to allow overlaying actual input */
-    .upload-wrapper {
-        position: relative;
-        display: block;
-        width: 100%;
-        max-width: 900px;
-        margin-bottom: 12px;
-    }
-
-    /* Custom upload box (visual) */
-    .custom-upload {
-        border: 3px dashed #0000FF;
+    /* Custom upload box wrapper */
+    .upload-box {
         background: #E6ECFF;
-        padding: 32px;
-        border-radius: 12px;
+        border: 3px dashed #0000FF;
+        border-radius: 14px;
+        padding: 42px;
         text-align: center;
-        font-size: 18px;
-        font-weight: 700;
-        color: #0000FF;
         cursor: pointer;
         margin-bottom: 20px;
     }
 
-    /* Ensure the real uploader sits on top of the blue box but remains invisible */
-    /* This targets Streamlit file uploader wrapper and places it absolute & full-size */
-    [data-testid="stFileUploader"] {
-        position: absolute !important;
-        left: 0;
-        top: 0;
-        width: 100% !important;
-        height: 100% !important;
-        opacity: 0 !important;
-        z-index: 10;
-        padding: 0 !important;
-        margin: 0 !important;
-        overflow: hidden !important;
+    .upload-title {
+        color: #0000FF;
+        font-size: 22px;
+        font-weight: 700;
     }
 
-    /* When input is focused, show subtle outline on blue box */
-    [data-testid="stFileUploader"]:focus + .custom-upload,
-    .custom-upload:focus {
-        box-shadow: 0 0 0 4px rgba(0,0,255,0.12);
+    .upload-sub {
+        font-size: 14px;
+        color: #0000FF;
+        margin-top: 6px;
+    }
+
+    /* Hide Streamlit's default label */
+    .stFileUploader label {
+        font-size: 0px !important;
+    }
+
+    /* Make uploader transparent & clickable */
+    .stFileUploader > div {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 100%;
+        opacity: 0;
+        cursor: pointer;
     }
 
     /* Keyword box */
@@ -93,7 +89,7 @@ st.markdown("""
         font-size: 16px !important;
     }
 
-    /* Buttons */
+    /* Primary buttons */
     .stButton>button {
         background-color: #0000FF !important;
         color: white !important;
@@ -105,11 +101,7 @@ st.markdown("""
         cursor: pointer;
     }
 
-    .stButton>button:hover {
-        opacity: 0.95;
-    }
-
-    /* Result Card */
+    /* White Card for Results */
     .result-card {
         background-color: white;
         padding: 20px;
@@ -119,12 +111,13 @@ st.markdown("""
         box-shadow: 0px 3px 12px rgba(0,0,0,0.08);
     }
 
-    /* Blue Table Header */
-    thead tr th {
+    /* Blue header for DataFrame */
+    .dataframe thead th {
         background-color: #0000FF !important;
         color: white !important;
-        font-weight: bold !important;
-        padding: 10px !important;
+        font-weight: 700 !important;
+        font-size: 15px !important;
+        text-align: center !important;
     }
 
     /* Footer */
@@ -140,6 +133,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 # -----------------------------------------------------------
 # HEADER
 # -----------------------------------------------------------
@@ -147,52 +141,28 @@ st.markdown("<div class='blue-header'>PPT Keyword Search Tool</div>", unsafe_all
 
 
 # -----------------------------------------------------------
-# UPLOAD: single blue box with invisible overlaying uploader
+# CUSTOM UPLOAD BOX (Option 1 Large Box)
 # -----------------------------------------------------------
-st.markdown("### Upload PPTX or ZIP files")
-
-# wrapper allows absolute positioning of the real uploader input
-st.markdown("<div class='upload-wrapper'>", unsafe_allow_html=True)
-
-# Real (invisible) Streamlit uploader placed first so it overlays the next element
-uploaded_files = st.file_uploader(
-    "hidden_uploader",
-    type=["pptx", "zip"],
-    accept_multiple_files=True,
-    label_visibility="collapsed"
-)
-
-# Visual blue box shown to the user
 st.markdown("""
-<div class='custom-upload' id='upload-area'>
-    Click or drag & drop PPTX / ZIP files here<br>
-    <span style='font-size:14px;font-weight:400;'>Limit 200MB per file • PPTX, ZIP</span>
+<div class="upload-box">
+    <div class="upload-title">Click or Drag & Drop PPTX / ZIP files here</div>
+    <div class="upload-sub">Limit 200MB per file • PPTX, ZIP</div>
 </div>
 """, unsafe_allow_html=True)
 
-# close wrapper
-st.markdown("</div>", unsafe_allow_html=True)
+uploaded_files = st.file_uploader(
+    "",
+    type=["pptx", "zip"],
+    accept_multiple_files=True
+)
 
-# add a small script so clicking the blue box also focuses the hidden uploader (not strictly necessary,
-# but improves keyboard focus behaviour)
-st.markdown("""
-<script>
-const area = document.getElementById('upload-area');
-if (area) {
-  area.onclick = function() {
-    const uploader = document.querySelector('[data-testid="stFileUploader"] input');
-    if (uploader) uploader.click();
-  };
-}
-</script>
-""", unsafe_allow_html=True)
+st.markdown("<br>", unsafe_allow_html=True)
 
 
 # -----------------------------------------------------------
 # KEYWORD INPUT
 # -----------------------------------------------------------
 st.markdown("### Enter Search Keyword")
-
 st.markdown("<div class='keyword-box'>", unsafe_allow_html=True)
 keyword = st.text_input("", placeholder="Enter keyword to search...")
 st.markdown("</div>", unsafe_allow_html=True)
@@ -201,7 +171,7 @@ search_btn = st.button("🔍 Search")
 
 
 # -----------------------------------------------------------
-# CLEAN TEXT (Fix IllegalCharacterError)
+# CLEAN TEXT BEFORE WRITING TO EXCEL
 # -----------------------------------------------------------
 def clean_text(text):
     if text is None:
@@ -217,16 +187,17 @@ def extract_text_from_pptx(file_path):
     matches = []
 
     for slide_num, slide in enumerate(prs.slides, start=1):
-        text = ""
+        slide_text = ""
+
         for shape in slide.shapes:
             if hasattr(shape, "text"):
-                text += shape.text + "\n"
+                slide_text += shape.text + "\n"
 
-        if keyword.lower() in text.lower():
+        if keyword.lower() in slide_text.lower():
             matches.append({
                 "File": os.path.basename(file_path),
                 "Slide Number": slide_num,
-                "Matched Text": clean_text(text.strip())
+                "Matched Text": slide_text.strip()
             })
 
     return matches
@@ -236,12 +207,12 @@ def extract_text_from_pptx(file_path):
 # ZIP HANDLING
 # -----------------------------------------------------------
 def process_zip(file):
-    temp_dir = tempfile.mkdtemp()
+    extracted_temp = tempfile.mkdtemp()
     with zipfile.ZipFile(file, 'r') as zip_ref:
-        zip_ref.extractall(temp_dir)
+        zip_ref.extractall(extracted_temp)
 
     pptx_files = []
-    for root, _, files in os.walk(temp_dir):
+    for root, _, files in os.walk(extracted_temp):
         for f in files:
             if f.endswith(".pptx"):
                 pptx_files.append(os.path.join(root, f))
@@ -279,11 +250,13 @@ if search_btn:
                 for p in pptx_files:
                     results.extend(extract_text_from_pptx(p))
 
+    # Convert to DF
     df = pd.DataFrame(results)
 
     if df.empty:
         st.warning("No matches found.")
     else:
+
         df = df.applymap(clean_text)
 
         st.markdown("<div class='result-card'>", unsafe_allow_html=True)
@@ -291,7 +264,6 @@ if search_btn:
         st.dataframe(df, use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Excel download
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="Results")
@@ -304,7 +276,6 @@ if search_btn:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-        # New Search Button
         if st.button("🔄 New Search"):
             st.session_state.clear()
             st.experimental_rerun()
