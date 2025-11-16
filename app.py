@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # -----------------------------------------------------------
-# CUSTOM CSS (Blue/White Premium Theme)
+# CUSTOM CSS (Blue/White Premium Theme) — updated uploader overlay
 # -----------------------------------------------------------
 st.markdown("""
 <style>
@@ -38,7 +38,16 @@ st.markdown("""
         background-color: #F4F6FF !important;
     }
 
-    /* Custom upload box */
+    /* Container for uploader to allow overlaying actual input */
+    .upload-wrapper {
+        position: relative;
+        display: block;
+        width: 100%;
+        max-width: 900px;
+        margin-bottom: 12px;
+    }
+
+    /* Custom upload box (visual) */
     .custom-upload {
         border: 3px dashed #0000FF;
         background: #E6ECFF;
@@ -52,14 +61,25 @@ st.markdown("""
         margin-bottom: 20px;
     }
 
-    /* Hide default Streamlit uploader */
+    /* Ensure the real uploader sits on top of the blue box but remains invisible */
+    /* This targets Streamlit file uploader wrapper and places it absolute & full-size */
     [data-testid="stFileUploader"] {
+        position: absolute !important;
+        left: 0;
+        top: 0;
+        width: 100% !important;
+        height: 100% !important;
         opacity: 0 !important;
-        height: 0px !important;
-        width: 0px !important;
-        padding: 0px !important;
-        margin: 0px !important;
+        z-index: 10;
+        padding: 0 !important;
+        margin: 0 !important;
         overflow: hidden !important;
+    }
+
+    /* When input is focused, show subtle outline on blue box */
+    [data-testid="stFileUploader"]:focus + .custom-upload,
+    .custom-upload:focus {
+        box-shadow: 0 0 0 4px rgba(0,0,255,0.12);
     }
 
     /* Keyword box */
@@ -86,7 +106,7 @@ st.markdown("""
     }
 
     .stButton>button:hover {
-        opacity: 0.9;
+        opacity: 0.95;
     }
 
     /* Result Card */
@@ -127,19 +147,14 @@ st.markdown("<div class='blue-header'>PPT Keyword Search Tool</div>", unsafe_all
 
 
 # -----------------------------------------------------------
-# SINGLE CLEAN UPLOAD AREA
+# UPLOAD: single blue box with invisible overlaying uploader
 # -----------------------------------------------------------
 st.markdown("### Upload PPTX or ZIP files")
 
-# Custom blue upload box
-st.markdown("""
-<div class='custom-upload' id='upload-area'>
-    Click here or Drag & Drop PPTX/ZIP files<br>
-    <span style='font-size:14px;font-weight:400;'>Limit 200MB per file • PPTX, ZIP</span>
-</div>
-""", unsafe_allow_html=True)
+# wrapper allows absolute positioning of the real uploader input
+st.markdown("<div class='upload-wrapper'>", unsafe_allow_html=True)
 
-# Hidden uploader
+# Real (invisible) Streamlit uploader placed first so it overlays the next element
 uploaded_files = st.file_uploader(
     "hidden_uploader",
     type=["pptx", "zip"],
@@ -147,12 +162,28 @@ uploaded_files = st.file_uploader(
     label_visibility="collapsed"
 )
 
-# Make blue box clickable
+# Visual blue box shown to the user
+st.markdown("""
+<div class='custom-upload' id='upload-area'>
+    Click or drag & drop PPTX / ZIP files here<br>
+    <span style='font-size:14px;font-weight:400;'>Limit 200MB per file • PPTX, ZIP</span>
+</div>
+""", unsafe_allow_html=True)
+
+# close wrapper
+st.markdown("</div>", unsafe_allow_html=True)
+
+# add a small script so clicking the blue box also focuses the hidden uploader (not strictly necessary,
+# but improves keyboard focus behaviour)
 st.markdown("""
 <script>
-document.getElementById('upload-area').onclick = function() {
-    document.querySelector('[data-testid="stFileUploader"] input').click();
-};
+const area = document.getElementById('upload-area');
+if (area) {
+  area.onclick = function() {
+    const uploader = document.querySelector('[data-testid="stFileUploader"] input');
+    if (uploader) uploader.click();
+  };
+}
 </script>
 """, unsafe_allow_html=True)
 
