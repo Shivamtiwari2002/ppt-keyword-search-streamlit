@@ -1,7 +1,6 @@
-streamlit
-st-aggrid
+streamlit>=1.24.0
 pandas
 python-pptx
 Pillow
 openpyxl
-
+st-aggrid
