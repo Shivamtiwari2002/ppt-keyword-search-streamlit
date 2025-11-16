@@ -6,6 +6,7 @@ import tempfile
 import os
 import re
 from io import BytesIO
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 
 # -----------------------------------------------------------
 # PAGE CONFIG
@@ -20,7 +21,6 @@ st.set_page_config(
 # -----------------------------------------------------------
 st.markdown("""
 <style>
-    /* Top blue header */
     .blue-header {
         background-color: #0000FF;
         padding: 22px;
@@ -33,12 +33,10 @@ st.markdown("""
         border-radius: 0px;
     }
 
-    /* Page background */
     .main {
         background-color: #F4F6FF !important;
     }
 
-    /* File uploader */
     .stFileUploader>div>div>div>input {
         border: 3px dashed #0000FF !important;
         border-radius: 14px !important;
@@ -53,7 +51,6 @@ st.markdown("""
         color: #0000FF !important;
     }
 
-    /* Keyword input box */
     .keyword-box input {
         border: 2px solid #0000FF !important;
         background: #E6ECFF !important;
@@ -65,7 +62,6 @@ st.markdown("""
         width: 100% !important;
     }
 
-    /* Buttons */
     .stButton>button {
         background-color: #0000FF !important;
         color: white !important;
@@ -78,47 +74,6 @@ st.markdown("""
         margin-right: 8px !important;
     }
 
-    /* Results card */
-    .result-card {
-        background-color: white;
-        padding: 20px;
-        border-radius: 12px;
-        border-left: 6px solid #0000FF;
-        margin-top: 20px;
-        box-shadow: 0px 3px 12px rgba(0,0,0,0.08);
-    }
-
-    /* Scrollable table */
-    .scrollable-table {
-        max-height: 500px;
-        overflow-y: auto;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-    }
-    .scrollable-table table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    .scrollable-table th {
-        background-color: #0000FF;
-        color: white;
-        font-weight: 700;
-        padding: 10px;
-        position: sticky;
-        top: 0;
-        text-align: center;
-        z-index: 2;
-    }
-    .scrollable-table td {
-        padding: 10px;
-        border-bottom: 1px solid #ddd;
-        text-align: left;
-    }
-    .scrollable-table tr:nth-child(even) {
-        background-color: #E6ECFF;
-    }
-
-    /* Footer */
     .footer {
         text-align:center;
         margin-top: 40px;
@@ -242,19 +197,25 @@ if search_btn:
         st.markdown("<div class='result-card'>", unsafe_allow_html=True)
         st.subheader("Search Results")
 
-        # HTML table with scrollable container
-        html_table = "<div class='scrollable-table'><table><thead><tr>"
-        for col in df.columns:
-            html_table += f"<th>{col}</th>"
-        html_table += "</tr></thead><tbody>"
-        for index, row in df.iterrows():
-            html_table += "<tr>"
-            for col in df.columns:
-                html_table += f"<td>{row[col]}</td>"
-            html_table += "</tr>"
-        html_table += "</tbody></table></div>"
+        # -----------------------
+        # AgGrid interactive table
+        # -----------------------
+        gb = GridOptionsBuilder.from_dataframe(df)
+        gb.configure_default_column(editable=False, filter=True, sortable=True)
+        gb.configure_selection('single')
+        gb.configure_grid_options(domLayout='normal')
+        grid_options = gb.build()
 
-        st.markdown(html_table, unsafe_allow_html=True)
+        AgGrid(
+            df,
+            gridOptions=grid_options,
+            height=400,
+            width='100%',
+            update_mode=GridUpdateMode.NO_UPDATE,
+            data_return_mode=DataReturnMode.FILTERED_AND_SORTED,
+            theme='blue'
+        )
+
         st.markdown("</div>", unsafe_allow_html=True)
 
         # Export Excel
