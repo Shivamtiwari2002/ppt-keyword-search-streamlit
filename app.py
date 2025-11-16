@@ -20,7 +20,6 @@ st.set_page_config(
 # -----------------------------------------------------------
 st.markdown("""
 <style>
-
     /* Blue top bar */
     .blue-header {
         background-color: #0000FF;
@@ -39,43 +38,19 @@ st.markdown("""
         background-color: #F4F6FF !important;
     }
 
-    /* Custom upload box wrapper */
-    .upload-box {
-        background: #E6ECFF;
-        border: 3px dashed #0000FF;
-        border-radius: 14px;
-        padding: 42px;
-        text-align: center;
-        cursor: pointer;
-        margin-bottom: 20px;
+    /* Style Streamlit uploader */
+    .stFileUploader>div>div>div>input {
+        border: 3px dashed #0000FF !important;
+        border-radius: 14px !important;
+        background-color: #E6ECFF !important;
+        padding: 30px !important;
+        cursor: pointer !important;
+        color: #0000FF !important;
     }
-
-    .upload-title {
-        color: #0000FF;
-        font-size: 22px;
-        font-weight: 700;
-    }
-
-    .upload-sub {
-        font-size: 14px;
-        color: #0000FF;
-        margin-top: 6px;
-    }
-
-    /* Hide Streamlit's default label */
-    .stFileUploader label {
-        font-size: 0px !important;
-    }
-
-    /* Make uploader transparent & clickable */
-    .stFileUploader > div {
-        position: absolute;
-        top: 0;
-        left: 0;
-        height: 100%;
-        width: 100%;
-        opacity: 0;
-        cursor: pointer;
+    .stFileUploader>div>label {
+        font-size: 20px !important;
+        font-weight: 700 !important;
+        color: #0000FF !important;
     }
 
     /* Keyword box */
@@ -129,35 +104,24 @@ st.markdown("""
         font-weight: 600;
         color: #0000FF;
     }
-
 </style>
 """, unsafe_allow_html=True)
-
 
 # -----------------------------------------------------------
 # HEADER
 # -----------------------------------------------------------
 st.markdown("<div class='blue-header'>PPT Keyword Search Tool</div>", unsafe_allow_html=True)
 
-
 # -----------------------------------------------------------
-# CUSTOM UPLOAD BOX (Option 1 Large Box)
+# FILE UPLOADER
 # -----------------------------------------------------------
-st.markdown("""
-<div class="upload-box">
-    <div class="upload-title">Click or Drag & Drop PPTX / ZIP files here</div>
-    <div class="upload-sub">Limit 200MB per file • PPTX, ZIP</div>
-</div>
-""", unsafe_allow_html=True)
-
 uploaded_files = st.file_uploader(
-    "",
-    type=["pptx", "zip"],
+    "Click or Drag & Drop PPTX / ZIP files here (Limit 200MB per file)", 
+    type=["pptx", "zip"], 
     accept_multiple_files=True
 )
 
 st.markdown("<br>", unsafe_allow_html=True)
-
 
 # -----------------------------------------------------------
 # KEYWORD INPUT
@@ -169,15 +133,13 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 search_btn = st.button("🔍 Search")
 
-
 # -----------------------------------------------------------
-# CLEAN TEXT BEFORE WRITING TO EXCEL
+# CLEAN TEXT
 # -----------------------------------------------------------
 def clean_text(text):
     if text is None:
         return ""
     return re.sub(r"[\000-\010\013\014\016-\037]", "", str(text))
-
 
 # -----------------------------------------------------------
 # PPTX PROCESSING
@@ -188,7 +150,6 @@ def extract_text_from_pptx(file_path):
 
     for slide_num, slide in enumerate(prs.slides, start=1):
         slide_text = ""
-
         for shape in slide.shapes:
             if hasattr(shape, "text"):
                 slide_text += shape.text + "\n"
@@ -201,7 +162,6 @@ def extract_text_from_pptx(file_path):
             })
 
     return matches
-
 
 # -----------------------------------------------------------
 # ZIP HANDLING
@@ -216,9 +176,7 @@ def process_zip(file):
         for f in files:
             if f.endswith(".pptx"):
                 pptx_files.append(os.path.join(root, f))
-
     return pptx_files
-
 
 # -----------------------------------------------------------
 # SEARCH ACTION
@@ -250,15 +208,12 @@ if search_btn:
                 for p in pptx_files:
                     results.extend(extract_text_from_pptx(p))
 
-    # Convert to DF
     df = pd.DataFrame(results)
 
     if df.empty:
         st.warning("No matches found.")
     else:
-
         df = df.applymap(clean_text)
-
         st.markdown("<div class='result-card'>", unsafe_allow_html=True)
         st.subheader("Search Results")
         st.dataframe(df, use_container_width=True)
@@ -279,7 +234,6 @@ if search_btn:
         if st.button("🔄 New Search"):
             st.session_state.clear()
             st.experimental_rerun()
-
 
 # -----------------------------------------------------------
 # FOOTER
