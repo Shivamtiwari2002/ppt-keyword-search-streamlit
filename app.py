@@ -30,7 +30,7 @@ st.markdown("""
         font-size: 32px;
         font-weight: 700;
         letter-spacing: 1px;
-        margin-bottom: 18px;
+        margin-bottom: 20px;
     }
 
     /* App background */
@@ -38,23 +38,28 @@ st.markdown("""
         background-color: #F4F6FF !important;
     }
 
-    /* File uploader UI */
+    /* Custom upload box */
     .custom-upload {
         border: 3px dashed #0000FF;
         background: #E6ECFF;
-        padding: 30px;
+        padding: 32px;
         border-radius: 12px;
         text-align: center;
         font-size: 18px;
-        font-weight: 600;
+        font-weight: 700;
         color: #0000FF;
         cursor: pointer;
         margin-bottom: 20px;
     }
 
-    /* Hide default uploader label */
-    .stFileUploader label {
-        font-size: 0px !important;
+    /* Hide default Streamlit uploader */
+    [data-testid="stFileUploader"] {
+        opacity: 0 !important;
+        height: 0px !important;
+        width: 0px !important;
+        padding: 0px !important;
+        margin: 0px !important;
+        overflow: hidden !important;
     }
 
     /* Keyword box */
@@ -68,7 +73,7 @@ st.markdown("""
         font-size: 16px !important;
     }
 
-    /* Primary Buttons */
+    /* Buttons */
     .stButton>button {
         background-color: #0000FF !important;
         color: white !important;
@@ -77,9 +82,14 @@ st.markdown("""
         border-radius: 10px !important;
         border: none !important;
         font-weight: 600 !important;
+        cursor: pointer;
     }
 
-    /* White Card for Results */
+    .stButton>button:hover {
+        opacity: 0.9;
+    }
+
+    /* Result Card */
     .result-card {
         background-color: white;
         padding: 20px;
@@ -87,6 +97,14 @@ st.markdown("""
         border-left: 6px solid #0000FF;
         margin-top: 20px;
         box-shadow: 0px 3px 12px rgba(0,0,0,0.08);
+    }
+
+    /* Blue Table Header */
+    thead tr th {
+        background-color: #0000FF !important;
+        color: white !important;
+        font-weight: bold !important;
+        padding: 10px !important;
     }
 
     /* Footer */
@@ -99,40 +117,8 @@ st.markdown("""
         color: #0000FF;
     }
 
-    /* ------------------------------------------------------ */
-    /*  NEW ADDITION #1 : Blue Table Header                   */
-    /* ------------------------------------------------------ */
-    thead tr th {
-        background-color: #0000FF !important;
-        color: white !important;
-        font-weight: bold !important;
-        text-align: left !important;
-        padding: 10px !important;
-        border-bottom: 2px solid #ffffff !important;
-    }
-
-    /* Dataframe border subtle */
-    .stDataFrame tbody td {
-        border-bottom: 1px solid #D9E1FF !important;
-    }
-
-    /* ------------------------------------------------------ */
-    /*  NEW ADDITION #2 : Blue Download Button                */
-    /* ------------------------------------------------------ */
-    .download-btn button {
-        background-color: #0000FF !important;
-        color: white !important;
-        padding: 10px 20px !important;
-        border-radius: 10px !important;
-        border: none !important;
-        font-weight: 600 !important;
-        cursor: pointer;
-        width: 240px;
-    }
-
 </style>
 """, unsafe_allow_html=True)
-
 
 # -----------------------------------------------------------
 # HEADER
@@ -141,23 +127,39 @@ st.markdown("<div class='blue-header'>PPT Keyword Search Tool</div>", unsafe_all
 
 
 # -----------------------------------------------------------
-# MAIN LAYOUT
+# SINGLE CLEAN UPLOAD AREA
 # -----------------------------------------------------------
 st.markdown("### Upload PPTX or ZIP files")
 
-st.markdown(
-    "<div class='custom-upload'>Drag and drop files here<br><span style='font-size:14px;font-weight:400;'>Limit 200MB per file • PPTX, ZIP</span></div>",
-    unsafe_allow_html=True
-)
+# Custom blue upload box
+st.markdown("""
+<div class='custom-upload' id='upload-area'>
+    Click here or Drag & Drop PPTX/ZIP files<br>
+    <span style='font-size:14px;font-weight:400;'>Limit 200MB per file • PPTX, ZIP</span>
+</div>
+""", unsafe_allow_html=True)
 
+# Hidden uploader
 uploaded_files = st.file_uploader(
-    "",
+    "hidden_uploader",
     type=["pptx", "zip"],
-    accept_multiple_files=True
+    accept_multiple_files=True,
+    label_visibility="collapsed"
 )
 
-st.markdown("<br>", unsafe_allow_html=True)
+# Make blue box clickable
+st.markdown("""
+<script>
+document.getElementById('upload-area').onclick = function() {
+    document.querySelector('[data-testid="stFileUploader"] input').click();
+};
+</script>
+""", unsafe_allow_html=True)
 
+
+# -----------------------------------------------------------
+# KEYWORD INPUT
+# -----------------------------------------------------------
 st.markdown("### Enter Search Keyword")
 
 st.markdown("<div class='keyword-box'>", unsafe_allow_html=True)
@@ -168,7 +170,7 @@ search_btn = st.button("🔍 Search")
 
 
 # -----------------------------------------------------------
-# CLEAN TEXT BEFORE WRITING TO EXCEL
+# CLEAN TEXT (Fix IllegalCharacterError)
 # -----------------------------------------------------------
 def clean_text(text):
     if text is None:
@@ -177,23 +179,23 @@ def clean_text(text):
 
 
 # -----------------------------------------------------------
-# PROCESS THE PPTX FILES
+# PPTX PROCESSING
 # -----------------------------------------------------------
 def extract_text_from_pptx(file_path):
     prs = Presentation(file_path)
     matches = []
 
     for slide_num, slide in enumerate(prs.slides, start=1):
-        slide_text = ""
+        text = ""
         for shape in slide.shapes:
             if hasattr(shape, "text"):
-                slide_text += shape.text + "\n"
+                text += shape.text + "\n"
 
-        if keyword.lower() in slide_text.lower():
+        if keyword.lower() in text.lower():
             matches.append({
                 "File": os.path.basename(file_path),
                 "Slide Number": slide_num,
-                "Matched Text": slide_text.strip()
+                "Matched Text": clean_text(text.strip())
             })
 
     return matches
@@ -203,12 +205,12 @@ def extract_text_from_pptx(file_path):
 # ZIP HANDLING
 # -----------------------------------------------------------
 def process_zip(file):
-    extracted_temp = tempfile.mkdtemp()
+    temp_dir = tempfile.mkdtemp()
     with zipfile.ZipFile(file, 'r') as zip_ref:
-        zip_ref.extractall(extracted_temp)
+        zip_ref.extractall(temp_dir)
 
     pptx_files = []
-    for root, _, files in os.walk(extracted_temp):
+    for root, _, files in os.walk(temp_dir):
         for f in files:
             if f.endswith(".pptx"):
                 pptx_files.append(os.path.join(root, f))
@@ -246,41 +248,35 @@ if search_btn:
                 for p in pptx_files:
                     results.extend(extract_text_from_pptx(p))
 
-    # Convert to DF
     df = pd.DataFrame(results)
 
     if df.empty:
         st.warning("No matches found.")
     else:
-
-        # Clean illegal chars
         df = df.applymap(clean_text)
 
-        # Results Card
         st.markdown("<div class='result-card'>", unsafe_allow_html=True)
         st.subheader("Search Results")
-
         st.dataframe(df, use_container_width=True)
-
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # -------- BLUE Download Button --------
+        # Excel download
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="Results")
         excel_data = output.getvalue()
 
-        st.markdown("<div class='download-btn'>", unsafe_allow_html=True)
         st.download_button(
             label="⬇ Download Results (Excel)",
             data=excel_data,
             file_name="ppt_search_results.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-        st.markdown("</div>", unsafe_allow_html=True)
 
         # New Search Button
-        st.button("🔄 New Search")
+        if st.button("🔄 New Search"):
+            st.session_state.clear()
+            st.experimental_rerun()
 
 
 # -----------------------------------------------------------
