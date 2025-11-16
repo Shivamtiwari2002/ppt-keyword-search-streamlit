@@ -16,29 +16,29 @@ st.set_page_config(
 )
 
 # -----------------------------------------------------------
-# CUSTOM CSS (Blue/White Premium Theme)
+# CUSTOM CSS
 # -----------------------------------------------------------
 st.markdown("""
 <style>
-    /* Blue top bar */
+    /* Top blue header */
     .blue-header {
         background-color: #0000FF;
         padding: 22px;
-        border-radius: 0px;
         text-align: center;
         color: white;
         font-size: 32px;
         font-weight: 700;
         letter-spacing: 1px;
         margin-bottom: 24px;
+        border-radius: 0px;
     }
 
-    /* App background */
+    /* Page background */
     .main {
         background-color: #F4F6FF !important;
     }
 
-    /* Style Streamlit uploader */
+    /* File uploader */
     .stFileUploader>div>div>div>input {
         border: 3px dashed #0000FF !important;
         border-radius: 14px !important;
@@ -53,7 +53,7 @@ st.markdown("""
         color: #0000FF !important;
     }
 
-    /* Keyword box */
+    /* Keyword input box */
     .keyword-box input {
         border: 2px solid #0000FF !important;
         background: #E6ECFF !important;
@@ -62,9 +62,10 @@ st.markdown("""
         border-radius: 8px !important;
         padding: 10px !important;
         font-size: 16px !important;
+        width: 100% !important;
     }
 
-    /* Primary buttons (Search, Download, New Search) */
+    /* Buttons */
     .stButton>button {
         background-color: #0000FF !important;
         color: white !important;
@@ -77,7 +78,7 @@ st.markdown("""
         margin-right: 8px !important;
     }
 
-    /* White Card for Results */
+    /* Results card */
     .result-card {
         background-color: white;
         padding: 20px;
@@ -87,13 +88,34 @@ st.markdown("""
         box-shadow: 0px 3px 12px rgba(0,0,0,0.08);
     }
 
-    /* Blue header for DataFrame */
-    .dataframe thead th {
-        background-color: #0000FF !important;
-        color: white !important;
-        font-weight: 700 !important;
-        font-size: 15px !important;
-        text-align: center !important;
+    /* Scrollable table */
+    .scrollable-table {
+        max-height: 500px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+    }
+    .scrollable-table table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .scrollable-table th {
+        background-color: #0000FF;
+        color: white;
+        font-weight: 700;
+        padding: 10px;
+        position: sticky;
+        top: 0;
+        text-align: center;
+        z-index: 2;
+    }
+    .scrollable-table td {
+        padding: 10px;
+        border-bottom: 1px solid #ddd;
+        text-align: left;
+    }
+    .scrollable-table tr:nth-child(even) {
+        background-color: #E6ECFF;
     }
 
     /* Footer */
@@ -121,7 +143,6 @@ uploaded_files = st.file_uploader(
     type=["pptx", "zip"], 
     accept_multiple_files=True
 )
-
 st.markdown("<br>", unsafe_allow_html=True)
 
 # -----------------------------------------------------------
@@ -220,7 +241,20 @@ if search_btn:
         df = df.applymap(clean_text)
         st.markdown("<div class='result-card'>", unsafe_allow_html=True)
         st.subheader("Search Results")
-        st.dataframe(df, use_container_width=True)
+
+        # HTML table with scrollable container
+        html_table = "<div class='scrollable-table'><table><thead><tr>"
+        for col in df.columns:
+            html_table += f"<th>{col}</th>"
+        html_table += "</tr></thead><tbody>"
+        for index, row in df.iterrows():
+            html_table += "<tr>"
+            for col in df.columns:
+                html_table += f"<td>{row[col]}</td>"
+            html_table += "</tr>"
+        html_table += "</tbody></table></div>"
+
+        st.markdown(html_table, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
         # Export Excel
