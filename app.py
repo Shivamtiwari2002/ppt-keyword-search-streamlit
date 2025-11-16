@@ -25,7 +25,6 @@ st.markdown("""
     .blue-header {
         background-color: #0000FF;
         padding: 22px;
-        border-radius: 0px;
         text-align: center;
         color: white;
         font-size: 32px;
@@ -69,7 +68,7 @@ st.markdown("""
         font-size: 16px !important;
     }
 
-    /* Search button */
+    /* Primary Buttons */
     .stButton>button {
         background-color: #0000FF !important;
         color: white !important;
@@ -78,7 +77,6 @@ st.markdown("""
         border-radius: 10px !important;
         border: none !important;
         font-weight: 600 !important;
-        cursor: pointer;
     }
 
     /* White Card for Results */
@@ -99,6 +97,37 @@ st.markdown("""
         font-size: 14px;
         font-weight: 600;
         color: #0000FF;
+    }
+
+    /* ------------------------------------------------------ */
+    /*  NEW ADDITION #1 : Blue Table Header                   */
+    /* ------------------------------------------------------ */
+    thead tr th {
+        background-color: #0000FF !important;
+        color: white !important;
+        font-weight: bold !important;
+        text-align: left !important;
+        padding: 10px !important;
+        border-bottom: 2px solid #ffffff !important;
+    }
+
+    /* Dataframe border subtle */
+    .stDataFrame tbody td {
+        border-bottom: 1px solid #D9E1FF !important;
+    }
+
+    /* ------------------------------------------------------ */
+    /*  NEW ADDITION #2 : Blue Download Button                */
+    /* ------------------------------------------------------ */
+    .download-btn button {
+        background-color: #0000FF !important;
+        color: white !important;
+        padding: 10px 20px !important;
+        border-radius: 10px !important;
+        border: none !important;
+        font-weight: 600 !important;
+        cursor: pointer;
+        width: 240px;
     }
 
 </style>
@@ -139,7 +168,7 @@ search_btn = st.button("🔍 Search")
 
 
 # -----------------------------------------------------------
-# CLEAN TEXT BEFORE WRITING TO EXCEL (Fix IllegalCharacterError)
+# CLEAN TEXT BEFORE WRITING TO EXCEL
 # -----------------------------------------------------------
 def clean_text(text):
     if text is None:
@@ -230,26 +259,28 @@ if search_btn:
         # Results Card
         st.markdown("<div class='result-card'>", unsafe_allow_html=True)
         st.subheader("Search Results")
+
         st.dataframe(df, use_container_width=True)
+
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Download Excel Button
+        # -------- BLUE Download Button --------
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="Results")
         excel_data = output.getvalue()
 
+        st.markdown("<div class='download-btn'>", unsafe_allow_html=True)
         st.download_button(
             label="⬇ Download Results (Excel)",
             data=excel_data,
             file_name="ppt_search_results.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+        st.markdown("</div>", unsafe_allow_html=True)
 
         # New Search Button
-        if st.button("🔄 New Search"):
-            st.session_state.clear()
-            st.experimental_rerun()
+        st.button("🔄 New Search")
 
 
 # -----------------------------------------------------------
