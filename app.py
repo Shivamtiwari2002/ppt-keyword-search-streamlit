@@ -64,7 +64,7 @@ st.markdown("""
         font-size: 16px !important;
     }
 
-    /* Primary buttons */
+    /* Primary buttons (Search, Download, New Search) */
     .stButton>button {
         background-color: #0000FF !important;
         color: white !important;
@@ -74,6 +74,7 @@ st.markdown("""
         border: none !important;
         font-weight: 600 !important;
         cursor: pointer;
+        margin-right: 8px !important;
     }
 
     /* White Card for Results */
@@ -131,6 +132,9 @@ st.markdown("<div class='keyword-box'>", unsafe_allow_html=True)
 keyword = st.text_input("", placeholder="Enter keyword to search...")
 st.markdown("</div>", unsafe_allow_html=True)
 
+# -----------------------------------------------------------
+# SEARCH BUTTON
+# -----------------------------------------------------------
 search_btn = st.button("🔍 Search")
 
 # -----------------------------------------------------------
@@ -219,6 +223,7 @@ if search_btn:
         st.dataframe(df, use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
+        # Export Excel
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="Results")
@@ -231,6 +236,7 @@ if search_btn:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
+        st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔄 New Search"):
             st.session_state.clear()
             st.experimental_rerun()
