@@ -3,3 +3,5 @@ pandas
 python-pptx
 Pillow
 openpyxl
+rapidfuzz
+
