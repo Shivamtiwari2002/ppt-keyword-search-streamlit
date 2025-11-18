@@ -120,20 +120,35 @@ def clean_text(text):
         return ""
     return re.sub(r"[\000-\010\013\014\016-\037]", "", str(text))
 
+# ----------- UPDATED TITLE-ONLY LOGIC -----------
 def extract_text_from_pptx(file_path):
     prs = Presentation(file_path)
     matches = []
+
     for slide_num, slide in enumerate(prs.slides, start=1):
+
+        # Extract only Title for display in results
+        title_text = ""
+        try:
+            if slide.shapes.title and slide.shapes.title.text:
+                title_text = slide.shapes.title.text.strip()
+        except:
+            title_text = ""
+
+        # Extract full slide text for keyword search
         slide_text = ""
         for shape in slide.shapes:
-            if hasattr(shape, "text"):
+            if hasattr(shape, "text") and shape.text:
                 slide_text += shape.text + "\n"
+
+        # Search condition
         if keyword.lower() in slide_text.lower():
             matches.append({
                 "File": os.path.basename(file_path),
                 "Slide Number": slide_num,
-                "Matched Text": slide_text.strip()
+                "Matched Text": title_text  # title only
             })
+
     return matches
 
 def process_zip(file):
