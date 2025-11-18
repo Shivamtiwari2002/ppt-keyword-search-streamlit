@@ -6,6 +6,7 @@ import tempfile
 import os
 import re
 from io import BytesIO
+from rapidfuzz import fuzz   # <-- FUZZY MATCHING
 
 # ------------------- PAGE CONFIG -------------------
 st.set_page_config(page_title="PPT Keyword Search Tool", layout="wide")
@@ -114,20 +115,21 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 search_btn = st.button("🔍 Search")
 
+
 # ------------------- FUNCTIONS -------------------
 def clean_text(text):
     if text is None:
         return ""
     return re.sub(r"[\000-\010\013\014\016-\037]", "", str(text))
 
-# ----------- UPDATED TITLE-ONLY LOGIC -----------
+# ----------- UPDATED: FUZZY SEARCH + TITLE ONLY -----------
 def extract_text_from_pptx(file_path):
     prs = Presentation(file_path)
     matches = []
 
     for slide_num, slide in enumerate(prs.slides, start=1):
 
-        # Extract only Title for display in results
+        # Extract only Title to show in results
         title_text = ""
         try:
             if slide.shapes.title and slide.shapes.title.text:
@@ -135,21 +137,24 @@ def extract_text_from_pptx(file_path):
         except:
             title_text = ""
 
-        # Extract full slide text for keyword search
+        # Extract full slide text (used for fuzzy match)
         slide_text = ""
         for shape in slide.shapes:
             if hasattr(shape, "text") and shape.text:
-                slide_text += shape.text + "\n"
+                slide_text += shape.text + " "
 
-        # Search condition
-        if keyword.lower() in slide_text.lower():
+        # ---------- FUZZY MATCH ----------
+        similarity = fuzz.partial_ratio(keyword.lower(), slide_text.lower())
+
+        if similarity > 80:   # fuzzy threshold
             matches.append({
                 "File": os.path.basename(file_path),
                 "Slide Number": slide_num,
-                "Matched Text": title_text  # title only
+                "Matched Text": title_text   # ONLY title
             })
 
     return matches
+
 
 def process_zip(file):
     extracted_temp = tempfile.mkdtemp()
@@ -161,6 +166,7 @@ def process_zip(file):
             if f.endswith(".pptx"):
                 pptx_files.append(os.path.join(root, f))
     return pptx_files
+
 
 # ------------------- SEARCH LOGIC -------------------
 if search_btn:
@@ -190,7 +196,6 @@ if search_btn:
         st.warning("No matches found.")
     else:
         df = df.applymap(clean_text)
-        st.markdown("<div class='result-card'>", unsafe_allow_html=True)
         st.subheader("Search Results")
 
         # ------------------- FILTER BOX -------------------
