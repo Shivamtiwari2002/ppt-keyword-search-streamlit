@@ -7,214 +7,238 @@ import os
 import re
 from io import BytesIO
 from rapidfuzz import fuzz
-from pptx.enum.shapes import MSO_SHAPE_TYPE
-from PIL import Image
 
 # ------------------- PAGE CONFIG -------------------
-st.set_page_config(page_title="PPT Keyword Search Tool — Enhanced", layout="wide")
+st.set_page_config(page_title="PPT Keyword Search Tool", layout="wide")
 
-# ------------------- DEFAULTS & SESSION -------------------
-if "recent_searches" not in st.session_state:
-    st.session_state.recent_searches = []
-
-if "last_results" not in st.session_state:
-    st.session_state.last_results = pd.DataFrame()
-
-# ------------------- CUSTOM CSS -------------------
+# ------------------- MODERN UI CSS -------------------
 st.markdown("""
 <style>
-.header {
-    background-color: #0b63d6;
-    padding: 18px;
+
+body {
+    background-color: #F5F7FF;
+}
+
+.header-box {
+    background: linear-gradient(135deg, #0047FF, #3F8CFF);
+    padding: 25px;
+    border-radius: 12px;
+    text-align: center;
     color: white;
-    border-radius: 8px;
-    font-size: 22px;
+    font-size: 34px;
+    font-weight: 800;
+    margin-bottom: 30px;
+    box-shadow: 0px 4px 14px rgba(0,0,0,0.12);
+}
+
+.section-card {
+    background: white;
+    padding: 22px;
+    border-radius: 16px;
+    box-shadow: 0px 4px 12px rgba(0,0,0,0.08);
+    margin-bottom: 25px;
+}
+
+.stFileUploader>div>div {
+    border: 2px dashed #0047FF !important;
+    background: #EFF3FF !important;
+    border-radius: 14px !important;
+}
+
+.upload-label {
+    font-size: 18px;
     font-weight: 700;
+    color: #0047FF;
 }
-.badge {
-    display:inline-block;
-    padding:4px 8px;
-    border-radius:6px;
-    color:white;
-    font-weight:700;
-    font-size:12px;
+
+.keyword-box input {
+    border: 2px solid #0047FF !important;
+    border-radius: 12px !important;
+    padding: 12px !important;
+    background: #EFF3FF !important;
+    font-size: 17px !important;
+    color: #0033CC !important;
+    font-weight: 600 !important;
 }
-.badge-high { background:#16a34a; }
-.badge-medium { background:#f59e0b; }
-.badge-low { background:#ef4444; }
-.small-muted { font-size:12px; color:#555; }
+
+.stButton>button {
+    background: #0047FF !important;
+    color: white !important;
+    border-radius: 10px !important;
+    padding: 10px 26px !important;
+    font-size: 17px !important;
+    border: none !important;
+    font-weight: 600 !important;
+    box-shadow: 0px 3px 10px rgba(0,0,0,0.15);
+}
+
+.table-container {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.table-container th {
+    background: #0047FF;
+    color: white;
+    padding: 10px;
+    text-align: left;
+}
+
+.table-container tr:hover {
+    background: #E8EEFF;
+}
+
+.table-container td {
+    padding: 10px;
+    border-bottom: 1px solid #DDD;
+    font-size: 15px;
+}
+
+.footer {
+    text-align:center;
+    margin-top: 40px;
+    padding: 15px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #0047FF;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
 # ------------------- HEADER -------------------
-st.markdown("<div class='header'>PPT Keyword Search Tool — Enhanced (No OCR Version)</div>", unsafe_allow_html=True)
-st.markdown("##")
+st.markdown("<div class='header-box'>PPT Keyword Search Tool</div>", unsafe_allow_html=True)
 
-# ------------------- SIDEBAR -------------------
-with st.sidebar:
-    st.markdown("### Upload & Settings")
+
+# ------------------- FILE UPLOADER -------------------
+with st.container():
+    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='upload-label'>Upload PPTX / ZIP Files</div>", unsafe_allow_html=True)
     uploaded_files = st.file_uploader(
-        "Upload PPTX or ZIP files",
+        "",
         type=["pptx", "zip"],
         accept_multiple_files=True
     )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    keywords_input = st.text_input("Enter keyword(s)", placeholder="e.g. job code, role")
-    
-    exact_match = st.checkbox("Exact match only", value=False)
-    fuzzy_threshold = st.slider("Fuzzy threshold", 50, 100, 80)
+# ------------------- KEYWORD INPUT -------------------
+with st.container():
+    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+    st.markdown("### Enter Keyword")
+    st.markdown("<div class='keyword-box'>", unsafe_allow_html=True)
+    keyword = st.text_input("", placeholder="e.g. Job Code, Role Name, Business Line")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    show_images = st.checkbox("Extract images (does NOT use OCR)", value=True)
+    search_btn = st.button("🔍 Search")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    if st.button("🔍 Search"):
-        st.session_state.run_search = True
-
-# ------------------- HELPERS -------------------
+# ------------------- FUNCTIONS -------------------
 def clean_text(text):
     if text is None:
         return ""
     return re.sub(r"[\000-\010\013\014\016-\037]", "", str(text))
 
-def extract_from_all_shapes(shape, collect_images=False):
-    text = ""
-    images = []
+def extract_text_from_pptx(file_path):
+    prs = Presentation(file_path)
+    matches = []
 
-    # Simple text
-    if hasattr(shape, "text") and shape.text:
-        text += shape.text + " "
+    for slide_num, slide in enumerate(prs.slides, start=1):
+        
+        # Title only view (your original logic)
+        title_text = ""
+        try:
+            if slide.shapes.title and slide.shapes.title.text:
+                title_text = slide.shapes.title.text.strip()
+        except:
+            title_text = ""
 
-    # Table text
-    if shape.shape_type == MSO_SHAPE_TYPE.TABLE:
-        for row in shape.table.rows:
-            for cell in row.cells:
-                text += cell.text + " "
+        slide_text = ""
+        for shape in slide.shapes:
+            if hasattr(shape, "text") and shape.text:
+                slide_text += shape.text + " "
 
-    # Grouped shapes
-    if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-        for shp in shape.shapes:
-            t, imgs = extract_from_all_shapes(shp, collect_images=collect_images)
-            text += t
-            images.extend(imgs)
+        similarity = fuzz.partial_ratio(keyword.lower(), slide_text.lower())
 
-    # Picture shapes (NO OCR)
-    if collect_images and shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-        img_blob = shape.image.blob
-        images.append(img_blob)
+        if similarity > 80:
+            matches.append({
+                "File": os.path.basename(file_path),
+                "Slide Number": slide_num,
+                "Matched Text": title_text
+            })
 
-    return text, images
+    return matches
 
 def process_zip(file):
     extracted_temp = tempfile.mkdtemp()
     with zipfile.ZipFile(file, 'r') as z:
         z.extractall(extracted_temp)
+
     pptx_files = []
     for root, _, files in os.walk(extracted_temp):
         for f in files:
-            if f.lower().endswith(".pptx"):
+            if f.endswith(".pptx"):
                 pptx_files.append(os.path.join(root, f))
     return pptx_files
 
+
 # ------------------- SEARCH LOGIC -------------------
-if st.session_state.get("run_search", False):
-
+if search_btn:
     if not uploaded_files:
-        st.error("⚠ Upload at least one file.")
+        st.error("⚠ Please upload files before searching.")
         st.stop()
 
-    if not keywords_input.strip():
-        st.error("⚠ Enter at least one keyword.")
+    if not keyword.strip():
+        st.error("⚠ Please enter a keyword.")
         st.stop()
 
-    keywords = [k.strip() for k in keywords_input.split(",") if k.strip()]
-    st.session_state.recent_searches.append(", ".join(keywords))
+    results = []
+    with st.spinner("Searching…"):
+        for file in uploaded_files:
+            if file.name.endswith(".pptx"):
+                temp_path = os.path.join(tempfile.gettempdir(), file.name)
+                with open(temp_path, "wb") as f:
+                    f.write(file.read())
+                results.extend(extract_text_from_pptx(temp_path))
 
-    matches = []
-    all_pptx = []
+            elif file.name.endswith(".zip"):
+                for p in process_zip(file):
+                    results.extend(extract_text_from_pptx(p))
 
-    # Collect PPTX paths
-    for file in uploaded_files:
-        if file.name.lower().endswith(".pptx"):
-            tmp_path = os.path.join(tempfile.gettempdir(), file.name)
-            with open(tmp_path, "wb") as f:
-                f.write(file.read())
-            all_pptx.append(tmp_path)
-        elif file.name.lower().ends_with(".zip"):
-            all_pptx.extend(process_zip(file))
+    df = pd.DataFrame(results)
 
-    # Search loop
-    for path in all_pptx:
-        prs = Presentation(path)
+    st.markdown("<div class='section-card'>", unsafe_allow_html=True)
 
-        for slide_num, slide in enumerate(prs.slides, start=1):
-            slide_text = ""
-            slide_images = []
-
-            for shape in slide.shapes:
-                t, imgs = extract_from_all_shapes(shape, collect_images=show_images)
-                slide_text += t
-                slide_images.extend(imgs)
-
-            cleaned = clean_text(slide_text)
-
-            for kw in keywords:
-                kw_lower = kw.lower()
-
-                if exact_match:
-                    found = kw_lower in cleaned.lower()
-                    similarity = 100 if found else 0
-                else:
-                    similarity = fuzz.partial_ratio(kw_lower, cleaned.lower())
-                    found = similarity >= fuzzy_threshold
-
-                if found:
-                    matches.append({
-                        "File": os.path.basename(path),
-                        "Slide Number": slide_num,
-                        "Keyword": kw,
-                        "Similarity": similarity,
-                        "Excerpt": cleaned[:200] + ("..." if len(cleaned) > 200 else ""),
-                        "FullText": cleaned,
-                        "Images": slide_images
-                    })
-
-    # Display results
-    if not matches:
+    if df.empty:
         st.warning("No matches found.")
     else:
-        df = pd.DataFrame(matches)
-        st.session_state.last_results = df
+        df = df.applymap(clean_text)
 
-        st.success(f"Found {len(df)} matches")
+        st.markdown("### Results")
+        
+        def render_table(df):
+            html = "<table class='table-container'>"
+            html += "<tr>" + "".join(f"<th>{c}</th>" for c in df.columns) + "</tr>"
+            for _, row in df.iterrows():
+                html += "<tr>" + "".join(f"<td>{x}</td>" for x in row) + "</tr>"
+            html += "</table>"
+            return html
 
-        for _, row in df.iterrows():
-            sim = row["Similarity"]
-            badge = "badge-high" if sim >= 90 else "badge-medium" if sim >= 70 else "badge-low"
+        st.markdown(render_table(df), unsafe_allow_html=True)
 
-            st.markdown(f"""
-                **Keyword:** {row['Keyword']}  
-                **File:** {row['File']}  
-                **Slide:** {row['Slide Number']}  
-                <span class='badge {badge}'>{sim}% match</span>  
-            """, unsafe_allow_html=True)
-
-            with st.expander("Show full text"):
-                st.write(row["FullText"])
-
-            if show_images:
-                with st.expander("Images extracted (NO OCR)"):
-                    for img_blob in row["Images"]:
-                        try:
-                            img = Image.open(BytesIO(img_blob))
-                            st.image(img, use_column_width=True)
-                        except:
-                            pass
-
-        # Download Excel
+        # Download
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df.to_excel(writer, index=False)
+            df.to_excel(writer, index=False, sheet_name="Results")
+
         st.download_button(
-            "⬇ Download Results",
+            "⬇ Download Results (Excel)",
             output.getvalue(),
-            "ppt_search_results.xlsx"
+            file_name="ppt_search_results.xlsx"
         )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+# ------------------- FOOTER -------------------
+st.markdown("<div class='footer'>Made by SKT</div>", unsafe_allow_html=True)
