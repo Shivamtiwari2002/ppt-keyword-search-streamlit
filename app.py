@@ -10,7 +10,7 @@ from rapidfuzz import fuzz
 import html
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(page_title="PPT → HTML Keyword Search", layout="wide")
+st.set_page_config(page_title="PPT Keyword Search", layout="wide")
 
 # ---------------- UI THEME CSS (Blue & White) ----------------
 st.markdown("""
@@ -231,3 +231,4 @@ if results_all:
 
 # ---------------- Footer ----------------
 st.markdown("<div class='footer'>Made by SKT</div>", unsafe_allow_html=True)
+
