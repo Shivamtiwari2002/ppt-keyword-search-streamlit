@@ -1,4 +1,3 @@
-# app.py
 import streamlit as st
 import pandas as pd
 import os
@@ -72,27 +71,37 @@ def ppt_to_html_slides(file_path):
     return slides_out
 
 
-# ---------------- Highlight search terms ----------------
+# ---------------- Highlight Matches ----------------
 def highlight_terms(html_text, keyword):
-    if not keyword:
-        return html_text
     pattern = re.compile(re.escape(keyword), re.IGNORECASE)
     return pattern.sub(lambda m: f"<mark class='mark'>{m.group(0)}</mark>", html_text)
 
 
-# ---------------- Search function ----------------
-def search_slides(slides, keyword, mode="fuzzy", threshold=80):
+# ---------------- Search Logic ----------------
+def search_slides(slides, keyword, mode="exact_phrase", threshold=80):
     results = []
     k = keyword.strip()
+
+    # REGEX for Exact Phrase with punctuation allowed but NO extra words BEFORE
+    exact_pattern = re.compile(
+        r"(?<!\w)[\s\-\•\(\)]*" + re.escape(k) + r"(?=[\s\-\:\)\]]|$)",
+        re.IGNORECASE
+    )
+
     for s in slides:
-        text = re.sub(r"<[^>]+>", " ", s["html"])
-        if mode == "exact":
-            if k.lower() in text.lower():
+        raw_text = re.sub(r"<[^>]+>", " ", s["html"])
+
+        if mode == "exact_phrase":
+            if exact_pattern.search(raw_text):
+                results.append({**s, "score": 100})
+        elif mode == "exact":
+            if k.lower() in raw_text.lower():
                 results.append({**s, "score": 100})
         else:
-            score = fuzz.partial_ratio(k.lower(), text.lower())
+            score = fuzz.partial_ratio(k.lower(), raw_text.lower())
             if score >= threshold:
                 results.append({**s, "score": score})
+
     return results
 
 
@@ -108,41 +117,41 @@ def extract_zip_pptx(zip_file):
     return pptx_files
 
 
-# ---------------- Sidebar settings ----------------
+# ---------------- Sidebar ----------------
 with st.sidebar:
-    st.markdown("### Search Settings")
-    search_mode = st.radio("Match mode", ["fuzzy", "exact"])
-    threshold = st.slider("Fuzzy threshold", 60, 100, 85) if search_mode == "fuzzy" else 100
+    st.markdown("### Search Mode")
+    search_mode = st.radio(
+        "Choose Search Type",
+        ["exact_phrase (recommended)", "exact", "fuzzy"],
+        index=0
+    )
+
+    st.markdown("### Fuzzy Threshold")
+    threshold = st.slider("Fuzzy threshold", 60, 100, 85)
 
     st.markdown("---")
     st.markdown("Made by SKT")
 
 
-# ---------------- Upload PPT files ----------------
+# ---------------- Upload Files ----------------
 st.markdown("<div class='section-card'>", unsafe_allow_html=True)
 st.markdown("<div class='upload-label'>Upload PPTX / ZIP Files</div>", unsafe_allow_html=True)
 
-uploaded_files = st.file_uploader(
-    "",
-    type=["pptx", "zip"],
-    accept_multiple_files=True
-)
+uploaded_files = st.file_uploader("", type=["pptx", "zip"], accept_multiple_files=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------------- Keyword Input ----------------
+# ---------------- Keyword Box ----------------
 st.markdown("<div class='section-card'>", unsafe_allow_html=True)
-st.markdown("### Enter Keyword")
-
-keyword = st.text_input("Keyword", "", placeholder="e.g. Job Code, Role Name")
-
+keyword = st.text_input("Enter Keyword", "", placeholder="e.g. PSD Manager")
 st.markdown("</div>", unsafe_allow_html=True)
+
 
 # ---------------- Search Button ----------------
 search_btn = st.button("🔍 Search")
 
 
-# ---------------- Collect PPT paths ----------------
+# ---------------- Collect PPT Paths ----------------
 pptx_paths = []
 
 if uploaded_files:
@@ -157,31 +166,33 @@ if uploaded_files:
             pptx_paths.extend(extract_zip_pptx(temp_path))
 
 
-# ---------------- Run Search ----------------
+# ---------------- Perform Search ----------------
 results_all = []
 
 if search_btn:
     if not pptx_paths:
-        st.error("Please upload at least one PPTX file.")
+        st.error("Please upload PPTX files.")
     elif not keyword.strip():
-        st.error("Please enter a keyword.")
+        st.error("Enter a keyword.")
     else:
-        with st.spinner("Searching…"):
+        mode_clean = search_mode.split(" ")[0]
+
+        with st.spinner("Searching slides…"):
             for p in pptx_paths:
                 slides = ppt_to_html_slides(p)
-                matches = search_slides(slides, keyword, search_mode, threshold)
+                matches = search_slides(slides, keyword, mode_clean, threshold)
 
                 for m in matches:
-                    html_slide = highlight_terms(m["html"], keyword)
+                    highlighted = highlight_terms(m["html"], keyword)
                     results_all.append({
                         "File": os.path.basename(p),
                         "Slide": m["slide_no"],
                         "Title": m["title"],
                         "Score": m["score"],
-                        "HTML": html_slide
+                        "HTML": highlighted
                     })
 
-        st.success(f"Search completed. {len(results_all)} matches found.")
+        st.success(f"{len(results_all)} matches found.")
 
 
 # ---------------- Display Results ----------------
@@ -191,16 +202,15 @@ if results_all:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("### Search Results")
 
-    # Display table
-    def html_table(df):
-        html_out = "<table class='table-container'>"
-        html_out += "<tr>" + "".join(f"<th>{c}</th>" for c in df.columns) + "</tr>"
+    def render_table(df):
+        h = "<table class='table-container'>"
+        h += "<tr>" + "".join(f"<th>{c}</th>" for c in df.columns) + "</tr>"
         for _, row in df.iterrows():
-            html_out += "<tr>" + "".join(f"<td>{html.escape(str(x))}</td>" for x in row) + "</tr>"
-        html_out += "</table>"
-        return html_out
+            h += "<tr>" + "".join(f"<td>{html.escape(str(x))}</td>" for x in row) + "</tr>"
+        h += "</table>"
+        return h
 
-    st.markdown(html_table(df), unsafe_allow_html=True)
+    st.markdown(render_table(df), unsafe_allow_html=True)
 
     # Download Excel
     excel_out = BytesIO()
@@ -210,13 +220,14 @@ if results_all:
 
     st.download_button("⬇ Download Results (Excel)", excel_out.getvalue(), "ppt_results.xlsx")
 
-    # Slide preview
-    st.markdown("### Matched Slide HTML Preview")
+    # Preview
+    st.markdown("### Slide Previews")
     for r in results_all:
         st.markdown(f"#### {r['File']} — Slide {r['Slide']}")
         st.markdown(r["HTML"], unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 # ---------------- Footer ----------------
 st.markdown("<div class='footer'>Made by SKT</div>", unsafe_allow_html=True)
