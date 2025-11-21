@@ -41,7 +41,7 @@ body { background-color: #F5F7FF; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<div class='header-box'>PPT → HTML Keyword Search Tool</div>", unsafe_allow_html=True)
+st.markdown("<div class='header-box'>PPT Keyword Search Tool</div>", unsafe_allow_html=True)
 
 
 # ---------------- PPT → HTML Conversion ----------------
@@ -231,4 +231,5 @@ if results_all:
 
 # ---------------- Footer ----------------
 st.markdown("<div class='footer'>Made by SKT</div>", unsafe_allow_html=True)
+
 
