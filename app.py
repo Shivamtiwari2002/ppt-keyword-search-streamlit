@@ -110,25 +110,66 @@ body {
 # ------------------- HEADER -------------------
 st.markdown("<div class='header-box'>PPT Keyword Search Tool</div>", unsafe_allow_html=True)
 
+# ------------------- LOAD KEYWORDS FROM EXCEL -------------------
+@st.cache_data
+def load_keywords_from_excel(excel_bytes, col_name="Keyword"):
+    df = pd.read_excel(excel_bytes)
+    col = df.columns[0] if col_name not in df.columns else col_name
+    keywords = df[col].dropna().astype(str).str.strip().unique().tolist()
+    return sorted([k for k in keywords if k])
+
+# Local file inside repository
+LOCAL_EXCEL_PATH = "data/keywords.xlsx"
+
+# ------------------- EXCEL LOAD OPTIONS -------------------
+st.markdown("<div class='section-card'>", unsafe_allow_html=True)
+st.markdown("### Load Dropdown Values from Excel")
+
+uploaded_excel = st.file_uploader("Upload Excel for Dropdown (optional)", type=["xlsx", "xls"])
+use_local = st.checkbox(f"Use Local Excel: {LOCAL_EXCEL_PATH}")
+
+dropdown_keywords = []
+
+try:
+    if uploaded_excel:
+        dropdown_keywords = load_keywords_from_excel(uploaded_excel)
+    elif use_local and os.path.exists(LOCAL_EXCEL_PATH):
+        dropdown_keywords = load_keywords_from_excel(LOCAL_EXCEL_PATH)
+except Exception as e:
+    st.error(f"Error loading Excel: {e}")
+
+if dropdown_keywords:
+    keyword_options = ["-- Select --"] + dropdown_keywords
+else:
+    keyword_options = ["-- No keywords loaded --"]
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 # ------------------- FILE UPLOADER -------------------
 with st.container():
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("<div class='upload-label'>Upload PPTX / ZIP Files</div>", unsafe_allow_html=True)
-    uploaded_files = st.file_uploader(
-        "",
-        type=["pptx", "zip"],
-        accept_multiple_files=True
-    )
+    uploaded_files = st.file_uploader("", type=["pptx", "zip"], accept_multiple_files=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ------------------- KEYWORD INPUT -------------------
 with st.container():
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
-    st.markdown("### Enter Keyword")
+    st.markdown("### Select or Enter Keyword")
+
+    selected_keyword = st.selectbox("Choose from dropdown", keyword_options)
+
     st.markdown("<div class='keyword-box'>", unsafe_allow_html=True)
-    keyword = st.text_input("", placeholder="e.g. Job Code, Role Name, Business Line")
+    custom_keyword = st.text_input("", placeholder="Or type your own keyword…")
     st.markdown("</div>", unsafe_allow_html=True)
+
+    # Final keyword logic
+    if custom_keyword.strip():
+        keyword = custom_keyword.strip()
+    elif selected_keyword not in ["-- Select --", "-- No keywords loaded --"]:
+        keyword = selected_keyword
+    else:
+        keyword = ""
 
     search_btn = st.button("🔍 Search")
     st.markdown("</div>", unsafe_allow_html=True)
@@ -139,19 +180,18 @@ def clean_text(text):
         return ""
     return re.sub(r"[\000-\010\013\014\016-\037]", "", str(text))
 
-def extract_text_from_pptx(file_path):
+def extract_text_from_pptx(file_path, keyword):
     prs = Presentation(file_path)
     matches = []
 
     for slide_num, slide in enumerate(prs.slides, start=1):
-        
-        # Title only view (your original logic)
+
         title_text = ""
         try:
             if slide.shapes.title and slide.shapes.title.text:
                 title_text = slide.shapes.title.text.strip()
         except:
-            title_text = ""
+            pass
 
         slide_text = ""
         for shape in slide.shapes:
@@ -164,32 +204,32 @@ def extract_text_from_pptx(file_path):
             matches.append({
                 "File": os.path.basename(file_path),
                 "Slide Number": slide_num,
-                "Matched Text": title_text
+                "Matched Text": title_text,
+                "Similarity": similarity
             })
 
     return matches
 
-def process_zip(file):
-    extracted_temp = tempfile.mkdtemp()
+def extract_zip(file):
+    temp_dir = tempfile.mkdtemp()
     with zipfile.ZipFile(file, 'r') as z:
-        z.extractall(extracted_temp)
+        z.extractall(temp_dir)
 
     pptx_files = []
-    for root, _, files in os.walk(extracted_temp):
+    for root, _, files in os.walk(temp_dir):
         for f in files:
             if f.endswith(".pptx"):
                 pptx_files.append(os.path.join(root, f))
     return pptx_files
 
-
 # ------------------- SEARCH LOGIC -------------------
 if search_btn:
     if not uploaded_files:
-        st.error("⚠ Please upload files before searching.")
+        st.error("⚠ Please upload PPTX or ZIP files.")
         st.stop()
 
-    if not keyword.strip():
-        st.error("⚠ Please enter a keyword.")
+    if not keyword:
+        st.error("⚠ Please select or enter a keyword.")
         st.stop()
 
     results = []
@@ -199,11 +239,11 @@ if search_btn:
                 temp_path = os.path.join(tempfile.gettempdir(), file.name)
                 with open(temp_path, "wb") as f:
                     f.write(file.read())
-                results.extend(extract_text_from_pptx(temp_path))
+                results.extend(extract_text_from_pptx(temp_path, keyword))
 
             elif file.name.endswith(".zip"):
-                for p in process_zip(file):
-                    results.extend(extract_text_from_pptx(p))
+                for ppt_path in extract_zip(file):
+                    results.extend(extract_text_from_pptx(ppt_path, keyword))
 
     df = pd.DataFrame(results)
 
@@ -215,7 +255,7 @@ if search_btn:
         df = df.applymap(clean_text)
 
         st.markdown("### Results")
-        
+
         def render_table(df):
             html = "<table class='table-container'>"
             html += "<tr>" + "".join(f"<th>{c}</th>" for c in df.columns) + "</tr>"
@@ -226,7 +266,7 @@ if search_btn:
 
         st.markdown(render_table(df), unsafe_allow_html=True)
 
-        # Download
+        # Download report
         output = BytesIO()
         with pd.ExcelWriter(output, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="Results")
@@ -238,7 +278,6 @@ if search_btn:
         )
 
     st.markdown("</div>", unsafe_allow_html=True)
-
 
 # ------------------- FOOTER -------------------
 st.markdown("<div class='footer'>Made by SKT</div>", unsafe_allow_html=True)
