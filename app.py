@@ -19,8 +19,8 @@ st.set_page_config(
 st.markdown("""
 <style>
 
+/* BODY: Background image + gradient overlay */
 body {
-    /* Background image + gradient overlay */
     background:
       linear-gradient(140deg, rgba(247,249,255,0.85) 0%, rgba(237,242,255,0.85) 40%, rgba(255,255,255,0.85) 100%),
       url('bg_main.png') no-repeat center center fixed;
@@ -161,7 +161,7 @@ input[type="text"] {
 """, unsafe_allow_html=True)
 
 # HEADER
-st.markdown("<div class='header-box'>PPT → HTML Keyword Search Tool</div>", unsafe_allow_html=True)
+st.markdown("<div class='header-box'>Impact Analysis Tool</div>", unsafe_allow_html=True)
 
 # ---------------- PPT → HTML Conversion ----------------
 def ppt_to_html_slides(file_path):
@@ -288,6 +288,7 @@ if results_all:
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("### Search Results")
 
+    # Table
     def render_table(df):
         table = "<table class='table-container'>"
         table += "<tr>" + "".join(f"<th>{c}</th>" for c in df.columns) + "</tr>"
@@ -295,7 +296,6 @@ if results_all:
             table += "<tr>" + "".join(f"<td>{html.escape(str(x))}</td>" for x in row) + "</tr>"
         table += "</table>"
         return table
-
     st.markdown(render_table(df), unsafe_allow_html=True)
 
     # Download Excel
@@ -309,11 +309,22 @@ if results_all:
         "ppt_search_results.xlsx"
     )
 
-    # PREVIEW
+    # ---------------- PREVIEW CARDS ----------------
     st.markdown("### Slide Previews")
     for r in results_all:
-        st.markdown(f"#### {r['File']} — Slide {r['Slide']}")
-        st.markdown(r["HTML"], unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="
+            border: 2px solid #0047FF;
+            border-radius: 18px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: #F7F9FF;
+            box-shadow: 0px 6px 18px rgba(0,0,140,0.12);
+        ">
+            <h4 style='color:#0047FF; margin-bottom:12px;'>{r['File']} — Slide {r['Slide']}</h4>
+            {r['HTML']}
+        </div>
+        """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------- FOOTER ----------------
