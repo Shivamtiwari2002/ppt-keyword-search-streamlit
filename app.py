@@ -8,17 +8,17 @@ from io import BytesIO
 from pptx import Presentation
 from rapidfuzz import fuzz
 import html
+from openai import OpenAI
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
-    page_title="Impact Analysis Tool",
+    page_title="PPT → HTML Keyword Search + AI Summary",
     layout="wide"
 )
 
-# ---------------- UI THEME ----------------
+# ---------------- UI THEME WITH IMAGES ----------------
 st.markdown("""
 <style>
-/* Body with background image */
 body {
     background:
       linear-gradient(140deg, rgba(247,249,255,0.85) 0%, rgba(237,242,255,0.85) 40%, rgba(255,255,255,0.85) 100%),
@@ -26,20 +26,20 @@ body {
     background-size: cover;
     font-family: 'Segoe UI', sans-serif;
 }
-
-/* Animated gradient overlay */
 body::before {
     content: "";
-    position: fixed; top: 0; left: 0;
+    position: fixed;
+    top: 0; left: 0;
     width: 100%; height: 100%;
     background: radial-gradient(circle at 20% 20%, rgba(0,72,255,0.10), transparent 50%),
                 radial-gradient(circle at 80% 80%, rgba(0,72,255,0.08), transparent 50%);
     animation: floatBg 12s ease-in-out infinite alternate;
     z-index: -1;
 }
-@keyframes floatBg { 0% { transform: translate(0px,0px); } 100% { transform: translate(10px,-10px); } }
-
-/* Header */
+@keyframes floatBg {
+    0% { transform: translate(0px, 0px); }
+    100% { transform: translate(10px, -10px); }
+}
 .header-box {
     background: linear-gradient(135deg, #0047FF, #3F8CFF);
     padding: 36px;
@@ -53,40 +53,91 @@ body::before {
     position: relative;
     overflow: hidden;
 }
-.header-box::before { content: url('decor_circle1.png'); position: absolute; top: -40px; left: -50px; width: 150px; opacity:0.15;}
-.header-box::after { content: url('decor_circle2.png'); position: absolute; bottom: -50px; right: -50px; width: 180px; opacity:0.12;}
-
-/* Cards */
-.section-card { background:white; padding:26px; border-radius:18px; border:1px solid #DFE6FF; box-shadow:0px 10px 22px rgba(0,60,160,0.08); margin-bottom:28px; }
-
-/* File uploader */
-.stFileUploader>div>div { border:2px dashed #0047FF !important; background:#EFF3FF !important; border-radius:16px !important; }
-
-/* Text input */
-input[type="text"] { border:2px solid #0047FF !important; border-radius:14px !important; padding:14px !important; background:#EFF3FF !important; font-size:16px !important; color:#0033CC !important; font-weight:600 !important; }
-
-/* Buttons */
-.stButton>button { background: linear-gradient(135deg, #0047FF, #2F6BFF) !important; color:white !important; border-radius:12px !important; padding:12px 28px !important; font-size:17px !important; border:none !important; font-weight:600 !important; box-shadow:0px 5px 15px rgba(0,0,0,0.17); transition:0.2s ease-in-out; }
-.stButton>button:hover { transform: translateY(-2px); box-shadow:0px 7px 18px rgba(0,0,0,0.22); }
-
-/* Table */
-.table-container { width:100%; border-collapse:collapse; margin-top:22px; }
-.table-container th { background:#0047FF; color:white; padding:12px; text-align:left; }
-.table-container tr:nth-child(even) { background:#F0F4FF; }
-.table-container tr:hover { background:#E5EBFF; }
-.table-container td { padding:12px; border-bottom:1px solid #D0D8FF; font-size:15px; }
-
-/* Footer */
-.footer { text-align:center; margin-top:40px; padding:14px; font-size:14px; font-weight:600; color:#0047FF; }
-
+.header-box::before {
+    content: url('decor_circle1.png');
+    position: absolute;
+    top: -40px; left: -50px;
+    width: 150px;
+    opacity: 0.15;
+}
+.header-box::after {
+    content: url('decor_circle2.png');
+    position: absolute;
+    bottom: -50px; right: -50px;
+    width: 180px;
+    opacity: 0.12;
+}
+.section-card {
+    background: white;
+    padding: 26px;
+    border-radius: 18px;
+    border: 1px solid #DFE6FF;
+    box-shadow: 0px 10px 22px rgba(0,60,160,0.08);
+    margin-bottom: 28px;
+}
+.stFileUploader>div>div {
+    border: 2px dashed #0047FF !important;
+    background: #EFF3FF !important;
+    border-radius: 16px !important;
+}
+input[type="text"] {
+    border: 2px solid #0047FF !important;
+    border-radius: 14px !important;
+    padding: 14px !important;
+    background: #EFF3FF !important;
+    font-size: 16px !important;
+    color: #0033CC !important;
+    font-weight: 600 !important;
+}
+.stButton>button {
+    background: linear-gradient(135deg, #0047FF, #2F6BFF) !important;
+    color: white !important;
+    border-radius: 12px !important;
+    padding: 12px 28px !important;
+    font-size: 17px !important;
+    border: none !important;
+    font-weight: 600 !important;
+    box-shadow: 0px 5px 15px rgba(0,0,0,0.17);
+    transition: 0.2s ease-in-out;
+}
+.stButton>button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0px 7px 18px rgba(0,0,0,0.22);
+}
+.table-container {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 22px;
+}
+.table-container th {
+    background: #0047FF;
+    color: white;
+    padding: 12px;
+    text-align: left;
+}
+.table-container tr:nth-child(even) { background: #F0F4FF; }
+.table-container tr:hover { background: #E5EBFF; }
+.table-container td {
+    padding: 12px;
+    border-bottom: 1px solid #D0D8FF;
+    font-size: 15px;
+}
+.footer {
+    text-align: center;
+    margin-top: 40px;
+    padding: 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #0047FF;
+}
 .mark { background: #FFF176; }
-
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<div class='header-box'>Impact Analysis Tool</div>", unsafe_allow_html=True)
+# HEADER
+st.markdown("<div class='header-box'>Impact Analysis Tool + AI Slide Summary</div>", unsafe_allow_html=True)
 
-# ---------------- PPT → HTML Conversion ----------------
+# ---------------- PPT → HTML ----------------
 def ppt_to_html_slides(file_path):
     prs = Presentation(file_path)
     slides_out = []
@@ -103,32 +154,30 @@ def ppt_to_html_slides(file_path):
                 txt = html.escape(shape.text).replace("\n", "<br>")
                 parts.append(f"<p>{txt}</p>")
         html_content = f"<div><h3>Slide {i}</h3><h4>{html.escape(title)}</h4>{''.join(parts)}</div>"
-        slides_out.append({"slide_no": i, "title": title, "html": html_content})
+        slides_out.append({"slide_no": i, "title": title, "html": html_content, "text": ' '.join([shape.text for shape in slide.shapes if hasattr(shape, "text") and shape.text])})
     return slides_out
 
-# ---------------- SEARCH HELPERS ----------------
+# ---------------- SEARCH ----------------
 def highlight_terms(html_text, keyword):
     pattern = re.compile(re.escape(keyword), re.IGNORECASE)
     return pattern.sub(lambda m: f"<mark class='mark'>{m.group(0)}</mark>", html_text)
 
 def search_slides(slides, keyword, mode="exact_phrase", threshold=80):
-    exact_pattern = re.compile(
-        r"(?<!\\w)[\\s\\-•(]*" + re.escape(keyword) + r"(?=[\\s\\-:)\]]|$)",
-        re.IGNORECASE
-    )
     results = []
+    escaped_keyword = re.escape(keyword.strip())
+    exact_pattern = re.compile(rf"\b{escaped_keyword}\b", re.IGNORECASE)
     for s in slides:
         text_for_search = re.sub(r"<[^>]+>", " ", s["html"])
         if mode == "exact_phrase":
             if exact_pattern.search(text_for_search):
-                results.append({**s, "score":100})
+                results.append({**s, "score": 100})
         elif mode == "exact":
             if keyword.lower() in text_for_search.lower():
-                results.append({**s, "score":100})
+                results.append({**s, "score": 100})
         else:  # fuzzy
             score = fuzz.partial_ratio(keyword.lower(), text_for_search.lower())
             if score >= threshold:
-                results.append({**s, "score":score})
+                results.append({**s, "score": score})
     return results
 
 def extract_zip_pptx(zip_file):
@@ -139,13 +188,17 @@ def extract_zip_pptx(zip_file):
     for root, _, files in os.walk(temp_dir):
         for f in files:
             if f.lower().endswith(".pptx"):
-                pptx_files.append(os.path.join(root,f))
+                pptx_files.append(os.path.join(root, f))
     return pptx_files
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
     st.markdown("### Search Mode")
-    search_mode = st.radio("", ["exact_phrase (recommended)", "exact", "fuzzy"], index=0)
+    search_mode = st.radio(
+        "",
+        ["exact_phrase (recommended)", "exact", "fuzzy"],
+        index=0
+    )
     threshold = st.slider("Fuzzy threshold", 60, 100, 85)
     st.markdown("---")
     st.markdown("Made by SKT")
@@ -153,7 +206,7 @@ with st.sidebar:
 # ---------------- UPLOAD ----------------
 st.markdown("<div class='section-card'>", unsafe_allow_html=True)
 st.markdown("### Upload PPTX / ZIP Files")
-uploaded_files = st.file_uploader("", type=["pptx","zip"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("", type=["pptx", "zip"], accept_multiple_files=True)
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------- KEYWORD ----------------
@@ -169,25 +222,26 @@ pptx_paths = []
 if uploaded_files:
     for uf in uploaded_files:
         temp_path = os.path.join(tempfile.gettempdir(), uf.name)
-        with open(temp_path, "wb") as f: f.write(uf.read())
-        if uf.name.lower().endswith(".pptx"): pptx_paths.append(temp_path)
-        else: pptx_paths.extend(extract_zip_pptx(temp_path))
+        with open(temp_path, "wb") as f:
+            f.write(uf.read())
+        if uf.name.lower().endswith(".pptx"):
+            pptx_paths.append(temp_path)
+        else:
+            pptx_paths.extend(extract_zip_pptx(temp_path))
 
-# ---------------- AI Feature: Summarize Slide ----------------
-def summarize_slide(slide_html):
-    """Use API tool to summarize slide"""
-    from openai import api_tool
-    prompt = f"Summarize this slide in 1-2 concise sentences:\n{slide_html}"
+# ---------------- OPENAI CLIENT ----------------
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+def get_ai_summary(text):
     try:
-        response = api_tool.completions.create(
-            model="gpt-4o-mini",
-            prompt=prompt,
-            temperature=0.5,
-            max_tokens=150
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role":"user","content": f"Summarize the following slide content in 2-3 lines:\n{text}"}],
+            temperature=0.3
         )
-        return response.choices[0].text.strip()
+        return response.choices[0].message.content.strip()
     except:
-        return "Summary not available."
+        return "AI summary not available"
 
 # ---------------- EXECUTE SEARCH ----------------
 results_all = []
@@ -204,20 +258,20 @@ if search_btn:
                 matches = search_slides(slides, keyword, mode_clean, threshold)
                 for m in matches:
                     highlighted = highlight_terms(m["html"], keyword)
-                    summary = summarize_slide(m["html"])
+                    ai_summary = get_ai_summary(m["text"])
                     results_all.append({
                         "File": os.path.basename(p),
                         "Slide": m["slide_no"],
                         "Title": m["title"],
                         "Score": m["score"],
                         "HTML": highlighted,
-                        "Summary": summary
+                        "AI_Summary": ai_summary
                     })
         st.success(f"{len(results_all)} matches found.")
 
 # ---------------- SHOW RESULTS ----------------
 if results_all:
-    df = pd.DataFrame(results_all).drop(columns=["HTML"])
+    df = pd.DataFrame(results_all).drop(columns=["HTML","AI_Summary"])
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("### Search Results")
 
@@ -236,23 +290,27 @@ if results_all:
     with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
         df.to_excel(writer, index=False)
     excel_buffer.seek(0)
-    st.download_button("⬇ Download Results (Excel)", excel_buffer.getvalue(), "ppt_search_results.xlsx")
+    st.download_button(
+        "⬇ Download Results (Excel)",
+        excel_buffer.getvalue(),
+        "ppt_search_results.xlsx"
+    )
 
-    # Slide Previews + Summaries
-    st.markdown("### Slide Previews & Summaries")
+    # ---------------- PREVIEW CARDS ----------------
+    st.markdown("### Slide Previews + AI Summary")
     for r in results_all:
         st.markdown(f"""
         <div style="
-            border:2px solid #0047FF;
-            border-radius:18px;
-            padding:20px;
-            margin-bottom:20px;
-            background:#F7F9FF;
-            box-shadow:0px 6px 18px rgba(0,0,140,0.12);
+            border: 2px solid #0047FF;
+            border-radius: 18px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background: #F7F9FF;
+            box-shadow: 0px 6px 18px rgba(0,0,140,0.12);
         ">
-            <h4 style='color:#0047FF; margin-bottom:10px;'>{r['File']} — Slide {r['Slide']}</h4>
+            <h4 style='color:#0047FF; margin-bottom:8px;'>{r['File']} — Slide {r['Slide']}</h4>
             {r['HTML']}
-            <p><b>Summary:</b> {r['Summary']}</p>
+            <p style='margin-top:12px; font-weight:600; color:#0033CC;'>AI Summary: {r['AI_Summary']}</p>
         </div>
         """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
