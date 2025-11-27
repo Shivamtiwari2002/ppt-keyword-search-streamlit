@@ -9,8 +9,9 @@ from io import BytesIO
 from pptx import Presentation
 from rapidfuzz import fuzz
 import html
-import openai
 from pathlib import Path
+from openai import OpenAI
+import json
 
 # ---------------- CONFIG ----------------
 # Use st.secrets for Streamlit Cloud; fallback to environment variable
@@ -23,20 +24,18 @@ else:
 if not OPENAI_KEY:
     st.warning("OpenAI API key not found. AI features will show an error until you set OPENAI_API_KEY.")
 else:
-    openai.api_key = OPENAI_KEY
+    client = OpenAI(api_key=OPENAI_KEY)
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="Impact Analysis Tool", layout="wide")
 
-# ---------------- UI THEME WITH IMAGES (your original CSS) ----------------
+# ---------------- UI THEME WITH IMAGES (CSS) ----------------
 st.markdown("""
 <style>
-/* ... same CSS as before ... (omitted here for brevity) */
+/* Your CSS here */
 body {
     background:
-      linear-gradient(140deg, rgba(247,249,255,0.85) 0%, rgba(237,242,255,0.85) 40%, rgba(255,255,255,0.85) 100%),
-      url('bg_main.png') no-repeat center center fixed;
-    background-size: cover;
+      linear-gradient(140deg, rgba(247,249,255,0.85) 0%, rgba(237,242,255,0.85) 40%, rgba(255,255,255,0.85) 100%);
     font-family: 'Segoe UI', sans-serif;
 }
 .header-box { background: linear-gradient(135deg, #0047FF, #3F8CFF); padding: 36px; border-radius: 20px; text-align: center; color: white; font-size: 36px; font-weight: 800; margin-bottom: 35px; box-shadow: 0px 8px 25px rgba(0,40,140,0.25); position: relative; overflow: hidden; }
@@ -129,7 +128,7 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------- PROCESS UPLOADED FILES ----------------
 pptx_paths = []
-all_slides_text = []  # flattened list for retrieval/chat
+all_slides_text = []
 
 if uploaded_files:
     upload_dir = Path(tempfile.gettempdir()) / "ppt_uploads"
@@ -143,7 +142,6 @@ if uploaded_files:
         else:
             pptx_paths.extend(extract_zip_pptx(str(tmp_path)))
 
-    # Build flattened slides list for retrieval and chat
     for p in pptx_paths:
         try:
             slides = ppt_to_html_slides(p)
@@ -157,12 +155,8 @@ if uploaded_files:
         except Exception as e:
             st.error(f"Error processing {p}: {e}")
 
-# ---------------- AI Retrieval & Chat (old OpenAI SDK) ----------------
+# ---------------- AI Retrieval & Chat (NEW SDK) ----------------
 def retrieve_relevant_slides(question, slides, top_n=5, min_score=20):
-    """
-    Simple retrieval using RapidFuzz partial ratio.
-    Returns top_n slides with score >= min_score
-    """
     ranked = []
     q = question.lower()
     for s in slides:
@@ -174,34 +168,35 @@ def retrieve_relevant_slides(question, slides, top_n=5, min_score=20):
     return results
 
 def ask_ai_question(user_question, context_text):
-    """
-    Calls the ChatCompletion (old SDK) with a system prompt that instructs the model
-    to answer using only the provided context. Returns model answer or an error string.
-    """
     if OPENAI_KEY is None:
         return "OpenAI API key not configured. Set OPENAI_API_KEY in st.secrets or environment."
 
     try:
-        # Build messages: system (instruction), user (context + question)
-        messages = [
-            {"role": "system", "content": "You are an assistant that answers questions using ONLY the provided PPT slide content. If the answer is not present in the context, say you couldn't find it. Always cite slide numbers when possible in square brackets like [Slide 3]."},
-            {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion:\n{user_question}\n\nAnswer concisely and cite slide numbers used."}
-        ]
-
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # widely available; change if you have gpt-4 access
-            messages=messages,
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an assistant that answers questions using ONLY the provided PPT slide content. "
+                        "If the answer is not present in the context, say you couldn't find it. "
+                        "Always cite slide numbers when possible in square brackets like [Slide 3]."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": f"Context:\n{context_text}\n\nQuestion:\n{user_question}\n\nAnswer concisely and cite slide numbers used."
+                }
+            ],
             temperature=0.2,
             max_tokens=700
         )
-
-        answer = response["choices"][0]["message"]["content"]
-        return answer
+        return response.choices[0].message.content
 
     except Exception as e:
         return f"AI Error: {e}"
 
-# ---------------- UI: AI Chat Modes ----------------
+# ---------------- UI: AI Chat ----------------
 st.markdown("<div class='section-card'>", unsafe_allow_html=True)
 st.markdown("### 🤖 AI Chat — Two Modes (Search-based & Full Chatbot)")
 
@@ -216,7 +211,6 @@ with col2:
 ask_ai_btn = st.button("✨ Ask AI")
 st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------------- If Ask AI pressed ----------------
 if ask_ai_btn:
     if not uploaded_files or not all_slides_text:
         st.error("Please upload PPTX / ZIP files first.")
@@ -225,36 +219,25 @@ if ask_ai_btn:
     else:
         with st.spinner("Retrieving relevant slides and asking AI..."):
             if chat_scope.startswith("Search-based"):
-                # Use keyword search results as context. If none existed, fallback to full retrieval.
-                # We'll collect slides that matched the last keyword search stored in session_state (if any).
                 last_search_results = st.session_state.get("last_search_matches", [])
                 if not last_search_results:
-                    # fallback to retrieving across all slides
                     relevant = retrieve_relevant_slides(user_question, all_slides_text, top_n=top_k, min_score=min_score)
                 else:
-                    # convert saved matches to same slide object format
-                    # last_search_results elements contain File, Slide, Title -> we map to slide objects
                     mapped = []
                     for m in last_search_results:
                         for s in all_slides_text:
                             if s["file"] == m["File"] and s["slide_no"] == int(m["Slide"]):
                                 mapped.append(s)
-                    # if mapping fails (empty), fallback to full retrieval
-                    if not mapped:
-                        relevant = retrieve_relevant_slides(user_question, all_slides_text, top_n=top_k, min_score=min_score)
-                    else:
-                        relevant = mapped[:top_k]
+                    relevant = mapped[:top_k] if mapped else retrieve_relevant_slides(user_question, all_slides_text, top_n=top_k, min_score=min_score)
             else:
-                # Full Chatbot: retrieve from entire PPT
                 relevant = retrieve_relevant_slides(user_question, all_slides_text, top_n=top_k, min_score=min_score)
 
             if not relevant:
-                st.warning("No sufficiently relevant slides found to answer the question. Try lowering Min relevance score or upload more content.")
+                st.warning("No sufficiently relevant slides found.")
             else:
                 context_text = ""
                 for s in relevant:
                     context_text += f"[Slide {s['slide_no']} — {s['file']}]\nTitle: {s['title']}\n{s['text']}\n\n"
-
                 ai_answer = ask_ai_question(user_question, context_text)
 
                 st.markdown("<div class='section-card'>", unsafe_allow_html=True)
@@ -267,13 +250,12 @@ if ask_ai_btn:
                     st.markdown(f"**Slide {s['slide_no']} — {s['title']}**")
                     st.write(s["text"][:600] + ("..." if len(s["text"]) > 600 else ""))
 
-# ---------------- KEYWORD SEARCH (your original feature) ----------------
+# ---------------- KEYWORD SEARCH ----------------
 st.markdown("<div class='section-card'>", unsafe_allow_html=True)
 keyword = st.text_input("Enter Keyword", "", placeholder="e.g. PSD Manager")
 st.markdown("</div>", unsafe_allow_html=True)
 
 search_btn = st.button("🔍 Search")
-
 results_all = []
 
 if search_btn:
@@ -300,8 +282,6 @@ if search_btn:
                         })
                 except Exception as e:
                     st.error(f"Error reading {p}: {e}")
-
-        # store last search results in session state for "Search-based" chat
         st.session_state["last_search_matches"] = results_all.copy()
         st.success(f"{len(results_all)} matches found.")
 
@@ -321,7 +301,6 @@ if results_all:
 
     st.markdown(render_table(df), unsafe_allow_html=True)
 
-    # Download Excel
     excel_buffer = BytesIO()
     with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
         df.to_excel(writer, index=False)
