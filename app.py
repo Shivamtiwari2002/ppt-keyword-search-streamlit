@@ -11,7 +11,6 @@ from rapidfuzz import fuzz
 import html
 from pathlib import Path
 from openai import OpenAI
-import json
 
 # ---------------- CONFIG ----------------
 # Use st.secrets for Streamlit Cloud; fallback to environment variable
@@ -29,26 +28,21 @@ else:
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="Impact Analysis Tool", layout="wide")
 
-# ---------------- UI THEME WITH IMAGES (CSS) ----------------
+# ---------------- UI THEME WITH CSS ----------------
 st.markdown("""
 <style>
-/* Your CSS here */
-body {
-    background:
-      linear-gradient(140deg, rgba(247,249,255,0.85) 0%, rgba(237,242,255,0.85) 40%, rgba(255,255,255,0.85) 100%);
-    font-family: 'Segoe UI', sans-serif;
-}
-.header-box { background: linear-gradient(135deg, #0047FF, #3F8CFF); padding: 36px; border-radius: 20px; text-align: center; color: white; font-size: 36px; font-weight: 800; margin-bottom: 35px; box-shadow: 0px 8px 25px rgba(0,40,140,0.25); position: relative; overflow: hidden; }
-.section-card { background: white; padding: 26px; border-radius: 18px; border: 1px solid #DFE6FF; box-shadow: 0px 10px 22px rgba(0,60,160,0.08); margin-bottom: 28px; }
-.stFileUploader>div>div { border: 2px dashed #0047FF !important; background: #EFF3FF !important; border-radius: 16px !important; }
-input[type="text"] { border: 2px solid #0047FF !important; border-radius: 14px !important; padding: 14px !important; background: #EFF3FF !important; font-size: 16px !important; color: #0033CC !important; font-weight: 600 !important; }
-.stButton>button { background: linear-gradient(135deg, #0047FF, #2F6BFF) !important; color: white !important; border-radius: 12px !important; padding: 12px 28px !important; font-size: 17px !important; border: none !important; font-weight: 600 !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.17); transition: 0.2s ease-in-out; }
-.stButton>button:hover { transform: translateY(-2px); box-shadow: 0px 7px 18px rgba(0,0,0,0.22); }
-.table-container { width: 100%; border-collapse: collapse; margin-top: 22px; }
-.table-container th { background: #0047FF; color: white; padding: 12px; text-align: left; }
-.table-container tr:nth-child(even) { background: #F0F4FF; } .table-container tr:hover { background: #E5EBFF; } .table-container td { padding: 12px; border-bottom: 1px solid #D0D8FF; font-size: 15px; }
-.footer { text-align: center; margin-top: 40px; padding: 14px; font-size: 14px; font-weight: 600; color: #0047FF; }
-.mark { background: #FFF176; }
+body {background: linear-gradient(140deg, rgba(247,249,255,0.85) 0%, rgba(237,242,255,0.85) 40%, rgba(255,255,255,0.85) 100%); font-family: 'Segoe UI', sans-serif;}
+.header-box {background: linear-gradient(135deg, #0047FF, #3F8CFF); padding: 36px; border-radius: 20px; text-align: center; color: white; font-size: 36px; font-weight: 800; margin-bottom: 35px; box-shadow: 0px 8px 25px rgba(0,40,140,0.25);}
+.section-card {background: white; padding: 26px; border-radius: 18px; border: 1px solid #DFE6FF; box-shadow: 0px 10px 22px rgba(0,60,160,0.08); margin-bottom: 28px;}
+.stFileUploader>div>div {border: 2px dashed #0047FF !important; background: #EFF3FF !important; border-radius: 16px !important;}
+input[type="text"] {border: 2px solid #0047FF !important; border-radius: 14px !important; padding: 14px !important; background: #EFF3FF !important; font-size: 16px !important; color: #0033CC !important; font-weight: 600 !important;}
+.stButton>button {background: linear-gradient(135deg, #0047FF, #2F6BFF) !important; color: white !important; border-radius: 12px !important; padding: 12px 28px !important; font-size: 17px !important; border: none !important; font-weight: 600 !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.17); transition: 0.2s ease-in-out;}
+.stButton>button:hover {transform: translateY(-2px); box-shadow: 0px 7px 18px rgba(0,0,0,0.22);}
+.table-container {width: 100%; border-collapse: collapse; margin-top: 22px;}
+.table-container th {background: #0047FF; color: white; padding: 12px; text-align: left;}
+.table-container tr:nth-child(even) {background: #F0F4FF;} .table-container tr:hover {background: #E5EBFF;} .table-container td {padding: 12px; border-bottom: 1px solid #D0D8FF; font-size: 15px;}
+.footer {text-align: center; margin-top: 40px; padding: 14px; font-size: 14px; font-weight: 600; color: #0047FF;}
+.mark {background: #FFF176;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -155,7 +149,7 @@ if uploaded_files:
         except Exception as e:
             st.error(f"Error processing {p}: {e}")
 
-# ---------------- AI Retrieval & Chat (NEW SDK) ----------------
+# ---------------- AI Retrieval & Chat (with quota handling) ----------------
 def retrieve_relevant_slides(question, slides, top_n=5, min_score=20):
     ranked = []
     q = question.lower()
@@ -194,7 +188,13 @@ def ask_ai_question(user_question, context_text):
         return response.choices[0].message.content
 
     except Exception as e:
-        return f"AI Error: {e}"
+        error_str = str(e)
+        if "insufficient_quota" in error_str or "429" in error_str:
+            return (
+                "⚠️ AI request failed: You have exceeded your OpenAI quota. "
+                "Please check your plan, billing, or reduce the number of slides / tokens."
+            )
+        return f"AI Error: {error_str}"
 
 # ---------------- UI: AI Chat ----------------
 st.markdown("<div class='section-card'>", unsafe_allow_html=True)
