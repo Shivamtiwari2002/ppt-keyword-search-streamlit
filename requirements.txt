@@ -4,4 +4,12 @@ python-pptx
 Pillow
 openpyxl
 rapidfuzz
+streamlit
+python-pptx
+rapidfuzz
+pandas
+openpyxl
+openai
+
+
 
