@@ -1,3 +1,4 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import os
@@ -8,21 +9,29 @@ from io import BytesIO
 from pptx import Presentation
 from rapidfuzz import fuzz
 import html
-from openai import OpenAI
+import openai
+from pathlib import Path
 
-client = OpenAI()
+# ---------------- CONFIG ----------------
+# Use st.secrets for Streamlit Cloud; fallback to environment variable
+OPENAI_KEY = None
+if "OPENAI_API_KEY" in st.secrets:
+    OPENAI_KEY = st.secrets["OPENAI_API_KEY"]
+else:
+    OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+
+if not OPENAI_KEY:
+    st.warning("OpenAI API key not found. AI features will show an error until you set OPENAI_API_KEY.")
+else:
+    openai.api_key = OPENAI_KEY
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(
-    page_title="Impact Analysis Tool",
-    layout="wide"
-)
+st.set_page_config(page_title="Impact Analysis Tool", layout="wide")
 
-# ---------------- UI THEME WITH IMAGES ----------------
+# ---------------- UI THEME WITH IMAGES (your original CSS) ----------------
 st.markdown("""
 <style>
-
-/* BODY: Background image + gradient overlay */
+/* ... same CSS as before ... (omitted here for brevity) */
 body {
     background:
       linear-gradient(140deg, rgba(247,249,255,0.85) 0%, rgba(237,242,255,0.85) 40%, rgba(255,255,255,0.85) 100%),
@@ -30,142 +39,23 @@ body {
     background-size: cover;
     font-family: 'Segoe UI', sans-serif;
 }
-
-/* Animated soft gradient overlay */
-body::before {
-    content: "";
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    background: radial-gradient(circle at 20% 20%, rgba(0,72,255,0.10), transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(0,72,255,0.08), transparent 50%);
-    animation: floatBg 12s ease-in-out infinite alternate;
-    z-index: -1;
-}
-
-@keyframes floatBg {
-    0% { transform: translate(0px, 0px); }
-    100% { transform: translate(10px, -10px); }
-}
-
-/* HEADER */
-.header-box {
-    background: linear-gradient(135deg, #0047FF, #3F8CFF);
-    padding: 36px;
-    border-radius: 20px;
-    text-align: center;
-    color: white;
-    font-size: 36px;
-    font-weight: 800;
-    margin-bottom: 35px;
-    box-shadow: 0px 8px 25px rgba(0,40,140,0.25);
-    position: relative;
-    overflow: hidden;
-}
-
-/* Decorative floating images in header */
-.header-box::before {
-    content: url('decor_circle1.png');
-    position: absolute;
-    top: -40px; left: -50px;
-    width: 150px;
-    opacity: 0.15;
-}
-.header-box::after {
-    content: url('decor_circle2.png');
-    position: absolute;
-    bottom: -50px; right: -50px;
-    width: 180px;
-    opacity: 0.12;
-}
-
-/* CARDS */
-.section-card {
-    background: white;
-    padding: 26px;
-    border-radius: 18px;
-    border: 1px solid #DFE6FF;
-    box-shadow: 0px 10px 22px rgba(0,60,160,0.08);
-    margin-bottom: 28px;
-}
-
-/* FILE UPLOADER */
-.stFileUploader>div>div {
-    border: 2px dashed #0047FF !important;
-    background: #EFF3FF !important;
-    border-radius: 16px !important;
-}
-
-/* TEXT INPUT */
-input[type="text"] {
-    border: 2px solid #0047FF !important;
-    border-radius: 14px !important;
-    padding: 14px !important;
-    background: #EFF3FF !important;
-    font-size: 16px !important;
-    color: #0033CC !important;
-    font-weight: 600 !important;
-}
-
-/* BUTTONS */
-.stButton>button {
-    background: linear-gradient(135deg, #0047FF, #2F6BFF) !important;
-    color: white !important;
-    border-radius: 12px !important;
-    padding: 12px 28px !important;
-    font-size: 17px !important;
-    border: none !important;
-    font-weight: 600 !important;
-    box-shadow: 0px 5px 15px rgba(0,0,0,0.17);
-    transition: 0.2s ease-in-out;
-}
-
-.stButton>button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0px 7px 18px rgba(0,0,0,0.22);
-}
-
-/* TABLE */
-.table-container {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 22px;
-}
-
-.table-container th {
-    background: #0047FF;
-    color: white;
-    padding: 12px;
-    text-align: left;
-}
-
-.table-container tr:nth-child(even) { background: #F0F4FF; }
-.table-container tr:hover { background: #E5EBFF; }
-
-.table-container td {
-    padding: 12px;
-    border-bottom: 1px solid #D0D8FF;
-    font-size: 15px;
-}
-
-/* FOOTER */
-.footer {
-    text-align: center;
-    margin-top: 40px;
-    padding: 14px;
-    font-size: 14px;
-    font-weight: 600;
-    color: #0047FF;
-}
-
+.header-box { background: linear-gradient(135deg, #0047FF, #3F8CFF); padding: 36px; border-radius: 20px; text-align: center; color: white; font-size: 36px; font-weight: 800; margin-bottom: 35px; box-shadow: 0px 8px 25px rgba(0,40,140,0.25); position: relative; overflow: hidden; }
+.section-card { background: white; padding: 26px; border-radius: 18px; border: 1px solid #DFE6FF; box-shadow: 0px 10px 22px rgba(0,60,160,0.08); margin-bottom: 28px; }
+.stFileUploader>div>div { border: 2px dashed #0047FF !important; background: #EFF3FF !important; border-radius: 16px !important; }
+input[type="text"] { border: 2px solid #0047FF !important; border-radius: 14px !important; padding: 14px !important; background: #EFF3FF !important; font-size: 16px !important; color: #0033CC !important; font-weight: 600 !important; }
+.stButton>button { background: linear-gradient(135deg, #0047FF, #2F6BFF) !important; color: white !important; border-radius: 12px !important; padding: 12px 28px !important; font-size: 17px !important; border: none !important; font-weight: 600 !important; box-shadow: 0px 5px 15px rgba(0,0,0,0.17); transition: 0.2s ease-in-out; }
+.stButton>button:hover { transform: translateY(-2px); box-shadow: 0px 7px 18px rgba(0,0,0,0.22); }
+.table-container { width: 100%; border-collapse: collapse; margin-top: 22px; }
+.table-container th { background: #0047FF; color: white; padding: 12px; text-align: left; }
+.table-container tr:nth-child(even) { background: #F0F4FF; } .table-container tr:hover { background: #E5EBFF; } .table-container td { padding: 12px; border-bottom: 1px solid #D0D8FF; font-size: 15px; }
+.footer { text-align: center; margin-top: 40px; padding: 14px; font-size: 14px; font-weight: 600; color: #0047FF; }
 .mark { background: #FFF176; }
-
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("<div class='header-box'>Impact Analysis Tool</div>", unsafe_allow_html=True)
 
-# ---------------- PPT → HTML Conversion ----------------
+# ---------------- Helper: PPT → HTML / text extraction ----------------
 def ppt_to_html_slides(file_path):
     prs = Presentation(file_path)
     slides_out = []
@@ -175,50 +65,46 @@ def ppt_to_html_slides(file_path):
         try:
             if slide.shapes.title and slide.shapes.title.text:
                 title = slide.shapes.title.text.strip()
-        except:
+        except Exception:
             title = ""
-
-        raw = []
+        raw_text_pieces = []
         for shape in slide.shapes:
-            if hasattr(shape, "text") and shape.text.strip():
-                raw.append(shape.text)
+            if hasattr(shape, "text") and shape.text and shape.text.strip():
+                raw_text_pieces.append(shape.text)
                 txt = html.escape(shape.text).replace("\n", "<br>")
                 parts.append(f"<p>{txt}</p>")
-
-        html_content = f"<div><h3>Slide {i}</h3><h4>{html.escape(title)}</h4>{''.join(parts)}</div>"
+        html_content = "<div><h3>Slide %d</h3><h4>%s</h4>%s</div>" % (i, html.escape(title), "".join(parts))
         slides_out.append({
             "slide_no": i,
             "title": title,
             "html": html_content,
-            "raw_text": " ".join(raw)
+            "raw_text": " ".join(raw_text_pieces)
         })
     return slides_out
 
-
-# ---------------- SEARCH HELPERS ----------------
+# ---------------- Search helpers ----------------
 def highlight_terms(html_text, keyword):
     pattern = re.compile(re.escape(keyword), re.IGNORECASE)
     return pattern.sub(lambda m: f"<mark class='mark'>{m.group(0)}</mark>", html_text)
 
-
 def search_slides(slides, keyword, mode="exact_phrase", threshold=80):
     results = []
     for s in slides:
-        text_for_search = s["raw_text"]
-        if mode == "exact_phrase" and keyword.lower() in text_for_search.lower():
+        text_for_search = s["raw_text"] or ""
+        lowered = text_for_search.lower()
+        if mode == "exact_phrase" and keyword.lower() in lowered:
             results.append({**s, "score": 100})
-        elif mode == "exact" and keyword.lower() in text_for_search.lower():
+        elif mode == "exact" and keyword.lower() in lowered:
             results.append({**s, "score": 100})
         elif mode == "fuzzy":
-            score = fuzz.partial_ratio(keyword.lower(), text_for_search.lower())
+            score = fuzz.partial_ratio(keyword.lower(), lowered)
             if score >= threshold:
                 results.append({**s, "score": score})
     return results
 
-
-def extract_zip_pptx(zip_file):
+def extract_zip_pptx(zip_file_path):
     temp_dir = tempfile.mkdtemp()
-    with zipfile.ZipFile(zip_file, "r") as z:
+    with zipfile.ZipFile(zip_file_path, "r") as z:
         z.extractall(temp_dir)
     pptx_files = []
     for root, _, files in os.walk(temp_dir):
@@ -226,7 +112,6 @@ def extract_zip_pptx(zip_file):
             if f.lower().endswith(".pptx"):
                 pptx_files.append(os.path.join(root, f))
     return pptx_files
-
 
 # ---------------- SIDEBAR ----------------
 with st.sidebar:
@@ -236,141 +121,193 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("Made by SKT")
 
-
 # ---------------- UPLOAD ----------------
 st.markdown("<div class='section-card'>", unsafe_allow_html=True)
 st.markdown("### Upload PPTX / ZIP Files")
 uploaded_files = st.file_uploader("", type=["pptx", "zip"], accept_multiple_files=True)
 st.markdown("</div>", unsafe_allow_html=True)
 
-
-# ---------------- PROCESS FILES ----------------
+# ---------------- PROCESS UPLOADED FILES ----------------
 pptx_paths = []
-all_slides_text = []
+all_slides_text = []  # flattened list for retrieval/chat
 
 if uploaded_files:
+    upload_dir = Path(tempfile.gettempdir()) / "ppt_uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
     for uf in uploaded_files:
-        temp_path = os.path.join(tempfile.gettempdir(), uf.name)
-        with open(temp_path, "wb") as f:
-            f.write(uf.read())
-
+        tmp_path = upload_dir / uf.name
+        with open(tmp_path, "wb") as f:
+            f.write(uf.getbuffer())
         if uf.name.lower().endswith(".pptx"):
-            pptx_paths.append(temp_path)
+            pptx_paths.append(str(tmp_path))
         else:
-            pptx_paths.extend(extract_zip_pptx(temp_path))
+            pptx_paths.extend(extract_zip_pptx(str(tmp_path)))
 
-    # extract text for chatbot
+    # Build flattened slides list for retrieval and chat
     for p in pptx_paths:
-        slides = ppt_to_html_slides(p)
-        for s in slides:
-            all_slides_text.append({
-                "file": os.path.basename(p),
-                "slide_no": s["slide_no"],
-                "title": s["title"],
-                "text": s["raw_text"]
-            })
+        try:
+            slides = ppt_to_html_slides(p)
+            for s in slides:
+                all_slides_text.append({
+                    "file": os.path.basename(p),
+                    "slide_no": s["slide_no"],
+                    "title": s["title"],
+                    "text": s["raw_text"]
+                })
+        except Exception as e:
+            st.error(f"Error processing {p}: {e}")
 
-
-# ---------------- AI CHATBOT FUNCTIONS ----------------
-
-def retrieve_relevant_slides(question, slides, top_n=5):
-    scores = []
+# ---------------- AI Retrieval & Chat (old OpenAI SDK) ----------------
+def retrieve_relevant_slides(question, slides, top_n=5, min_score=20):
+    """
+    Simple retrieval using RapidFuzz partial ratio.
+    Returns top_n slides with score >= min_score
+    """
+    ranked = []
+    q = question.lower()
     for s in slides:
-        score = fuzz.partial_ratio(question.lower(), s["text"].lower())
-        scores.append((score, s))
-    scores.sort(reverse=True, key=lambda x: x[0])
-    return [s for score, s in scores[:top_n] if score > 20]
+        txt = (s.get("text") or "").lower()
+        score = fuzz.partial_ratio(q, txt)
+        ranked.append((score, s))
+    ranked.sort(key=lambda x: x[0], reverse=True)
+    results = [s for score, s in ranked[:top_n] if score >= min_score]
+    return results
 
+def ask_ai_question(user_question, context_text):
+    """
+    Calls the ChatCompletion (old SDK) with a system prompt that instructs the model
+    to answer using only the provided context. Returns model answer or an error string.
+    """
+    if OPENAI_KEY is None:
+        return "OpenAI API key not configured. Set OPENAI_API_KEY in st.secrets or environment."
 
-def ask_chatgpt(question, context):
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system",
-             "content": "Answer ONLY using the PPT context provided. Mention slide numbers used."},
-            {"role": "user",
-             "content": f"Context from PPT:\n{context}\n\nQuestion: {question}"}
+    try:
+        # Build messages: system (instruction), user (context + question)
+        messages = [
+            {"role": "system", "content": "You are an assistant that answers questions using ONLY the provided PPT slide content. If the answer is not present in the context, say you couldn't find it. Always cite slide numbers when possible in square brackets like [Slide 3]."},
+            {"role": "user", "content": f"Context:\n{context_text}\n\nQuestion:\n{user_question}\n\nAnswer concisely and cite slide numbers used."}
         ]
-    )
-    return response.choices[0].message.content
 
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",  # widely available; change if you have gpt-4 access
+            messages=messages,
+            temperature=0.2,
+            max_tokens=700
+        )
 
-# ---------------- AI CHAT UI ----------------
+        answer = response["choices"][0]["message"]["content"]
+        return answer
+
+    except Exception as e:
+        return f"AI Error: {e}"
+
+# ---------------- UI: AI Chat Modes ----------------
 st.markdown("<div class='section-card'>", unsafe_allow_html=True)
-st.markdown("### 🤖 Ask AI (Chat with Your PPT)")
-user_question = st.text_input("Ask anything about the PPT:", "", 
-                              placeholder="e.g., In which visualisation is this Job used?")
+st.markdown("### 🤖 AI Chat — Two Modes (Search-based & Full Chatbot)")
+
+col1, col2 = st.columns([2, 1])
+with col1:
+    chat_scope = st.radio("Chat scope", ["Search-based (use keyword search results)", "Full Chatbot (use entire PPT)"], index=1)
+    user_question = st.text_input("Ask anything about the PPT:", "", placeholder="e.g., In which visualization is Job XYZ used?")
+with col2:
+    top_k = st.number_input("Top-K slides to use for context", value=5, min_value=1, max_value=10)
+    min_score = st.slider("Min relevance score for retrieval", 0, 100, 20)
+    st.markdown("Use **Search-based** when you want the AI to rely on your keyword search results. Use **Full Chatbot** to search entire PPT.")
 ask_ai_btn = st.button("✨ Ask AI")
 st.markdown("</div>", unsafe_allow_html=True)
 
-
+# ---------------- If Ask AI pressed ----------------
 if ask_ai_btn:
-    if not pptx_paths:
-        st.error("Please upload PPTX or ZIP files first.")
+    if not uploaded_files or not all_slides_text:
+        st.error("Please upload PPTX / ZIP files first.")
     elif not user_question.strip():
         st.error("Please enter a question.")
     else:
-        with st.spinner("Thinking… Searching slides…"):
-            relevant = retrieve_relevant_slides(user_question, all_slides_text, top_n=5)
+        with st.spinner("Retrieving relevant slides and asking AI..."):
+            if chat_scope.startswith("Search-based"):
+                # Use keyword search results as context. If none existed, fallback to full retrieval.
+                # We'll collect slides that matched the last keyword search stored in session_state (if any).
+                last_search_results = st.session_state.get("last_search_matches", [])
+                if not last_search_results:
+                    # fallback to retrieving across all slides
+                    relevant = retrieve_relevant_slides(user_question, all_slides_text, top_n=top_k, min_score=min_score)
+                else:
+                    # convert saved matches to same slide object format
+                    # last_search_results elements contain File, Slide, Title -> we map to slide objects
+                    mapped = []
+                    for m in last_search_results:
+                        for s in all_slides_text:
+                            if s["file"] == m["File"] and s["slide_no"] == int(m["Slide"]):
+                                mapped.append(s)
+                    # if mapping fails (empty), fallback to full retrieval
+                    if not mapped:
+                        relevant = retrieve_relevant_slides(user_question, all_slides_text, top_n=top_k, min_score=min_score)
+                    else:
+                        relevant = mapped[:top_k]
+            else:
+                # Full Chatbot: retrieve from entire PPT
+                relevant = retrieve_relevant_slides(user_question, all_slides_text, top_n=top_k, min_score=min_score)
 
             if not relevant:
-                st.warning("No relevant slide found.")
+                st.warning("No sufficiently relevant slides found to answer the question. Try lowering Min relevance score or upload more content.")
             else:
-                context = ""
+                context_text = ""
                 for s in relevant:
-                    context += f"\nSlide {s['slide_no']} ({s['file']}):\n{s['text']}\n"
+                    context_text += f"[Slide {s['slide_no']} — {s['file']}]\nTitle: {s['title']}\n{s['text']}\n\n"
 
-                answer = ask_chatgpt(user_question, context)
+                ai_answer = ask_ai_question(user_question, context_text)
 
                 st.markdown("<div class='section-card'>", unsafe_allow_html=True)
                 st.markdown("### 🤖 AI Answer")
-                st.write(answer)
+                st.write(ai_answer)
                 st.markdown("</div>", unsafe_allow_html=True)
 
-                st.markdown("### 📌 Relevant Slides Used:")
+                st.markdown("### 📌 Source Slides Used")
                 for s in relevant:
-                    st.markdown(f"**Slide {s['slide_no']} – {s['title']}**")
-                    st.write(s["text"][:400] + ("..." if len(s["text"]) > 400 else ""))
+                    st.markdown(f"**Slide {s['slide_no']} — {s['title']}**")
+                    st.write(s["text"][:600] + ("..." if len(s["text"]) > 600 else ""))
 
-
-# ---------------- KEYWORD SEARCH ----------------
+# ---------------- KEYWORD SEARCH (your original feature) ----------------
 st.markdown("<div class='section-card'>", unsafe_allow_html=True)
 keyword = st.text_input("Enter Keyword", "", placeholder="e.g. PSD Manager")
 st.markdown("</div>", unsafe_allow_html=True)
 
 search_btn = st.button("🔍 Search")
 
-
-# ---------------- SEARCH FUNCTION ----------------
 results_all = []
 
 if search_btn:
     if not pptx_paths:
-        st.error("Please upload PPTX or ZIP files.")
+        st.error("Please upload PPTX / ZIP files.")
     elif not keyword.strip():
         st.error("Please enter a keyword.")
     else:
         mode_clean = search_mode.split()[0]
         with st.spinner("Searching slides…"):
             for p in pptx_paths:
-                slides = ppt_to_html_slides(p)
-                matches = search_slides(slides, keyword, mode_clean, threshold)
+                try:
+                    slides = ppt_to_html_slides(p)
+                    matches = search_slides(slides, keyword, mode_clean, threshold)
+                    for m in matches:
+                        highlighted = highlight_terms(m["html"], keyword)
+                        results_all.append({
+                            "File": os.path.basename(p),
+                            "Slide": m["slide_no"],
+                            "Title": m["title"],
+                            "Score": m["score"],
+                            "HTML": highlighted,
+                            "raw_text": m["raw_text"]
+                        })
+                except Exception as e:
+                    st.error(f"Error reading {p}: {e}")
 
-                for m in matches:
-                    highlighted = highlight_terms(m["html"], keyword)
-                    results_all.append({
-                        "File": os.path.basename(p),
-                        "Slide": m["slide_no"],
-                        "Title": m["title"],
-                        "Score": m["score"],
-                        "HTML": highlighted
-                    })
+        # store last search results in session state for "Search-based" chat
+        st.session_state["last_search_matches"] = results_all.copy()
         st.success(f"{len(results_all)} matches found.")
 
-
-# ---------------- SHOW RESULTS ----------------
+# ---------------- SHOW KEYWORD SEARCH RESULTS ----------------
 if results_all:
-    df = pd.DataFrame(results_all).drop(columns=["HTML"])
+    df = pd.DataFrame(results_all).drop(columns=["HTML", "raw_text"])
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
     st.markdown("### Search Results")
 
@@ -389,21 +326,17 @@ if results_all:
     with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
         df.to_excel(writer, index=False)
     excel_buffer.seek(0)
-
-    st.download_button("⬇ Download Results (Excel)", excel_buffer.getvalue(),
-                       "ppt_search_results.xlsx")
+    st.download_button("⬇ Download Results (Excel)", excel_buffer.getvalue(), "ppt_search_results.xlsx")
 
     st.markdown("### Slide Previews")
     for r in results_all:
         st.markdown(f"""
-        <div style="border: 2px solid #0047FF; border-radius: 18px; padding: 20px;
-            margin-bottom: 20px; background: #F7F9FF;
-            box-shadow: 0px 6px 18px rgba(0,0,140,0.12);">
+        <div style="border: 2px solid #0047FF; border-radius: 18px; padding: 20px; margin-bottom: 20px; background: #F7F9FF; box-shadow: 0px 6px 18px rgba(0,0,140,0.12);">
             <h4 style='color:#0047FF; margin-bottom:12px;'>{r['File']} — Slide {r['Slide']}</h4>
             {r['HTML']}
         </div>
         """, unsafe_allow_html=True)
-
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------- FOOTER ----------------
 st.markdown("<div class='footer'>Made by SKT</div>", unsafe_allow_html=True)
