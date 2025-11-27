@@ -13,7 +13,6 @@ from pathlib import Path
 from openai import OpenAI
 
 # ---------------- CONFIG ----------------
-# Use st.secrets for Streamlit Cloud; fallback to environment variable
 OPENAI_KEY = None
 if "OPENAI_API_KEY" in st.secrets:
     OPENAI_KEY = st.secrets["OPENAI_API_KEY"]
@@ -149,7 +148,7 @@ if uploaded_files:
         except Exception as e:
             st.error(f"Error processing {p}: {e}")
 
-# ---------------- AI Retrieval & Chat (with quota handling) ----------------
+# ---------------- AI Retrieval & Chat ----------------
 def retrieve_relevant_slides(question, slides, top_n=5, min_score=20):
     ranked = []
     q = question.lower()
@@ -285,7 +284,7 @@ if search_btn:
         st.session_state["last_search_matches"] = results_all.copy()
         st.success(f"{len(results_all)} matches found.")
 
-# ---------------- SHOW KEYWORD SEARCH RESULTS ----------------
+# ---------------- SHOW KEYWORD SEARCH RESULTS (NO PREVIEW) ----------------
 if results_all:
     df = pd.DataFrame(results_all).drop(columns=["HTML", "raw_text"])
     st.markdown("<div class='section-card'>", unsafe_allow_html=True)
@@ -307,14 +306,6 @@ if results_all:
     excel_buffer.seek(0)
     st.download_button("⬇ Download Results (Excel)", excel_buffer.getvalue(), "ppt_search_results.xlsx")
 
-    st.markdown("### Slide Previews")
-    for r in results_all:
-        st.markdown(f"""
-        <div style="border: 2px solid #0047FF; border-radius: 18px; padding: 20px; margin-bottom: 20px; background: #F7F9FF; box-shadow: 0px 6px 18px rgba(0,0,140,0.12);">
-            <h4 style='color:#0047FF; margin-bottom:12px;'>{r['File']} — Slide {r['Slide']}</h4>
-            {r['HTML']}
-        </div>
-        """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------- FOOTER ----------------
